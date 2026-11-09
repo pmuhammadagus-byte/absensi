@@ -27,10 +27,8 @@ const DEFAULT_SETTINGS = {
   nama: '',
   jamMasukNormal: '08:00',
   jamPulangNormal: '17:00',
-  toleransi: 10,
   tarifHarian: 0,        // tarif untuk 9 jam kerja normal
   jamNormalHarian: 9,    // basis jam kerja normal
-  potonganMenit: 0,
 };
 
 const DEFAULT_SYNC = { url: '', token: '' };
@@ -85,32 +83,24 @@ function durasiMenit(datang, pulang) {
 /* ---------- perhitungan ---------- */
 
 /**
- * Menghitung turunan satu record: jam kerja, lembur, menit telat.
+ * Menghitung turunan satu record: jam kerja & lembur.
  * Jam kerja normal = 9 jam per hari; lembur = kelebihan di atas 9 jam.
  */
 function derive(rec) {
-  const masukNormal = toMinutes(settings.jamMasukNormal) ?? 8 * 60;
-  const toleransi = Number(settings.toleransi) || 0;
   const JAM_NORMAL = Number(settings.jamNormalHarian) || 9;
   const durasiNormal = JAM_NORMAL * 60; // basis normal = 9 jam
 
   if (rec.status && rec.status !== 'hadir') {
-    return { ...rec, jamKerja: 0, lembur: 0, telat: 0 };
+    return { ...rec, jamKerja: 0, lembur: 0 };
   }
 
   const kerja = durasiMenit(rec.jamDatang, rec.jamPulang);
-  const datangMenit = toMinutes(rec.jamDatang);
-
-  const telat = datangMenit == null ? 0 : Math.max(0, datangMenit - (masukNormal + toleransi));
-
-  // Lembur = kelebihan di atas 9 jam kerja normal
   const lemburMenit = Math.max(0, kerja - durasiNormal);
 
   return {
     ...rec,
     jamKerja: Math.round((kerja / 60) * 100) / 100,
     lembur: Math.round((lemburMenit / 60) * 100) / 100,
-    telat,
   };
 }
 
@@ -126,7 +116,6 @@ function rekap(periode) {
   const hadir = list.filter((r) => r.status === 'hadir');
   const totalJamKerja = hadir.reduce((a, r) => a + r.jamKerja, 0);
   const totalLembur = hadir.reduce((a, r) => a + r.lembur, 0);
-  const totalTelatMenit = hadir.reduce((a, r) => a + r.telat, 0);
 
   const JAM_NORMAL = Number(settings.jamNormalHarian) || 9;
   const tarifHarian = Number(settings.tarifHarian || 0);
@@ -136,22 +125,18 @@ function rekap(periode) {
   const gajiHarian = honorHarian * hadir.length;
   const tarifPerJam = honorHarian / JAM_NORMAL;
   const upahLembur = totalLembur * tarifPerJam;
-  const potonganTelat = totalTelatMenit * Number(settings.potonganMenit || 0);
-  const gajiBersih = gajiHarian + upahLembur - potonganTelat;
+  const gajiBersih = gajiHarian + upahLembur;
 
   return {
     list,
     jumlahHadir: hadir.length,
-    jumlahTelat: hadir.filter((r) => r.telat > 0).length,
     totalJamKerja,
     totalLembur,
-    totalTelatMenit,
     honorHarian,
     gajiHarian,
     tarifHarian,
     tarifPerJam,
     upahLembur,
-    potonganTelat,
     gajiBersih,
   };
 }
@@ -163,7 +148,6 @@ function renderRekap() {
   const r = rekap(periode);
 
   $('rHadir').textContent = r.jumlahHadir;
-  $('rTelat').textContent = r.jumlahTelat;
   $('rJam').textContent = angka(r.totalJamKerja);
   $('rLembur').textContent = angka(r.totalLembur);
   $('rGaji').textContent = rupiah(r.gajiBersih);
@@ -179,7 +163,6 @@ function renderRekap() {
     [`Upah harian × ${r.jumlahHadir} hari`, rupiah(r.gajiHarian), ''],
     [`Tarif per jam (harian ÷ 9 jam)`, rupiah(r.tarifPerJam), ''],
     [`Lembur ${angka(r.totalLembur)} jam × ${rupiah(r.tarifPerJam)}`, '+ ' + rupiah(r.upahLembur), 'pos'],
-    [`Potongan telat ${r.totalTelatMenit} menit`, '− ' + rupiah(r.potonganTelat), 'neg'],
   ];
 
   $('breakdown').innerHTML = rows
@@ -196,14 +179,12 @@ function renderTabel(list) {
 
   tbody.innerHTML = list
     .map((r) => {
-      const late = r.telat > 0 ? `<span class="badge late">+${r.telat}m</span>` : '';
       return `<tr>
         <td>${r.tanggal}</td>
         <td>${r.jamDatang || '—'}</td>
         <td>${r.jamPulang || '—'}</td>
         <td>${angka(r.jamKerja)}j</td>
         <td>${r.lembur ? angka(r.lembur) + 'j' : '—'}</td>
-        <td>${r.telat ? r.telat + 'm' + late : '—'}</td>
         <td><span class="badge ${r.status || 'hadir'}">${r.status || 'hadir'}</span></td>
         <td>${r.catatan ? escapeHtml(r.catatan) : '—'}</td>
         <td class="td-aksi">
@@ -316,10 +297,10 @@ function exportCsv() {
   const list = recordsPeriode($('periode').value);
   if (!list.length) return toast('Tidak ada data untuk diekspor.', 'err');
 
-  const head = ['tanggal', 'jam_datang', 'jam_pulang', 'jam_kerja', 'lembur', 'telat_menit', 'status', 'catatan'];
+  const head = ['tanggal', 'jam_datang', 'jam_pulang', 'jam_kerja', 'lembur', 'status', 'catatan'];
   const lines = [head.join(',')].concat(
     list.map((r) =>
-      [r.tanggal, r.jamDatang, r.jamPulang, r.jamKerja, r.lembur, r.telat, r.status, `"${(r.catatan || '').replace(/"/g, '""')}"`].join(',')
+      [r.tanggal, r.jamDatang, r.jamPulang, r.jamKerja, r.lembur, r.status, `"${(r.catatan || '').replace(/"/g, '""')}"`].join(',')
     )
   );
 
@@ -409,9 +390,7 @@ function isiFormDariSettings() {
   $('nama').value = settings.nama || '';
   $('jamMasukNormal').value = settings.jamMasukNormal;
   $('jamPulangNormal').value = settings.jamPulangNormal;
-  $('toleransi').value = settings.toleransi;
   $('tarifHarian').value = settings.tarifHarian;
-  $('potonganMenit').value = settings.potonganMenit;
   $('syncUrl').value = sync.url || '';
   $('syncToken').value = sync.token || '';
 }
@@ -421,9 +400,7 @@ function bacaSettingsDariForm() {
     nama: $('nama').value.trim(),
     jamMasukNormal: $('jamMasukNormal').value || '08:00',
     jamPulangNormal: $('jamPulangNormal').value || '17:00',
-    toleransi: Number($('toleransi').value) || 0,
     tarifHarian: Number($('tarifHarian').value) || 0,
-    potonganMenit: Number($('potonganMenit').value) || 0,
   };
   sync = { url: $('syncUrl').value.trim(), token: $('syncToken').value.trim() };
   save(K_SETTINGS, settings);
@@ -480,7 +457,7 @@ function init() {
     bukaPengaturan(false);
   });
 
-  ['nama', 'jamMasukNormal', 'jamPulangNormal', 'toleransi', 'tarifHarian', 'potonganMenit'].forEach(
+  ['nama', 'jamMasukNormal', 'jamPulangNormal', 'tarifHarian'].forEach(
     (id) =>
       $(id).addEventListener('change', () => {
         bacaSettingsDariForm();

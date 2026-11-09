@@ -11,8 +11,7 @@ Live: https://pmuhammadagus-byte.github.io/absensi/
 - Perhitungan otomatis per periode (bulanan):
   - jam kerja = jam pulang − jam datang (shift malam didukung)
   - lembur = kelebihan di atas 9 jam kerja normal
-  - telat = menit setelah jam masuk + toleransi
-  - gaji harian, upah lembur, potongan telat, gaji bersih
+  - gaji harian, upah lembur, gaji bersih
 - Edit / hapus absensi, ekspor CSV.
 - Sinkronisasi cloud opsional ke **Turso** (SQLite) melalui Cloudflare Worker.
 
@@ -23,13 +22,11 @@ JAM_NORMAL    = 9 jam
 
 jam_kerja     = jam_pulang - jam_datang           (dibulatkan +24 jam bila negatif)
 lembur        = max(0, jam_kerja - JAM_NORMAL)
-telat         = max(0, (jam_datang - (jam_masuk_normal + toleransi)))
 
 tarif_per_jam = tarif_harian / JAM_NORMAL
 gaji_harian   = tarif_harian * jumlah_hari_hadir
 upah_lembur   = total_lembur_jam * tarif_per_jam
-potongan      = total_telat_menit * potongan_per_menit
-gaji_bersih   = gaji_harian + upah_lembur - potongan
+gaji_bersih   = gaji_harian + upah_lembur
 ```
 
 ## Menjalankan lokal
