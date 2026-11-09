@@ -10,7 +10,7 @@ Live: https://pmuhammadagus-byte.github.io/absensi/
 - Tombol "Isi Jam Datang = Sekarang" / "Isi Jam Pulang = Sekarang" — tetap bisa diedit manual.
 - Perhitungan otomatis per periode (bulanan):
   - jam kerja = jam pulang − jam datang (shift malam didukung)
-  - lembur = kelebihan atas jam kerja normal
+  - lembur = kelebihan di atas 9 jam kerja normal
   - telat = menit setelah jam masuk + toleransi
   - gaji harian, upah lembur, potongan telat, gaji bersih
 - Edit / hapus absensi, ekspor CSV.
@@ -19,14 +19,16 @@ Live: https://pmuhammadagus-byte.github.io/absensi/
 ## Rumus
 
 ```
-durasi_normal = jam_pulang_normal - jam_masuk_normal
+JAM_NORMAL    = 9 jam
+
 jam_kerja     = jam_pulang - jam_datang           (dibulatkan +24 jam bila negatif)
-lembur        = max(0, jam_kerja - durasi_normal)
+lembur        = max(0, jam_kerja - JAM_NORMAL)
 telat         = max(0, (jam_datang - (jam_masuk_normal + toleransi)))
 
+tarif_per_jam = tarif_harian / JAM_NORMAL
 honor_harian  = (gaji_pokok + tunjangan) / hari_efektif
 gaji_harian   = honor_harian * jumlah_hari_hadir
-upah_lembur   = total_lembur_jam * tarif_lembur
+upah_lembur   = total_lembur_jam * tarif_per_jam
 potongan      = total_telat_menit * potongan_per_menit
 gaji_bersih   = gaji_harian + upah_lembur - potongan
 ```
