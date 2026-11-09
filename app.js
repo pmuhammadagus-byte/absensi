@@ -18,60 +18,61 @@ const $ = (id) => document.getElementById(id);
 const rupiah = (n) => 'Rp ' + Math.round(Number(n) || 0).toLocaleString('id-ID');
 const angka = (n) => (Math.round(Number(n) * 100) / 100).toLocaleString('id-ID');
 
-/* ---------- auth (local, hash SHA-256 + salt) ---------- */
+/* ---------- auth (server-side via Cloudflare Worker) ---------- */
 
 let currentUser = null;
-
-const enc = new TextEncoder();
-
-function bytesToHex(buf) {
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-function randomSalt() {
-  const b = new Uint8Array(16);
-  crypto.getRandomValues(b);
-  return bytesToHex(b.buffer);
-}
-
-async function hashPassword(password, salt) {
-  // iterasi ringan untuk memperlambat brute-force lokal
-  let digest = await crypto.subtle.digest('SHA-256', enc.encode(`${salt}:${password}`));
-  for (let i = 0; i < 800; i++) {
-    digest = await crypto.subtle.digest('SHA-256', digest);
-  }
-  return bytesToHex(digest);
-}
-
-function loadUsers() {
-  try {
-    const raw = localStorage.getItem(K_USERS);
-    const v = raw ? JSON.parse(raw) : {};
-    return v && typeof v === 'object' ? v : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveUsers(users) {
-  try {
-    localStorage.setItem(K_USERS, JSON.stringify(users));
-  } catch (e) {
-    console.warn('Gagal menyimpan pengguna', e);
-  }
-}
+let authToken = '';
+let apiBase = '';
 
 function normUser(u) {
   return String(u || '').trim().toLowerCase();
 }
 
-function setSession(username) {
-  if (username) localStorage.setItem(K_SESSION, username);
-  else localStorage.removeItem(K_SESSION);
+function simpanSesi(username, token) {
+  if (username && token) {
+    localStorage.setItem(K_SESSION, JSON.stringify({ username, token }));
+  } else {
+    localStorage.removeItem(K_SESSION);
+  }
 }
 
-function getSession() {
-  return localStorage.getItem(K_SESSION) || '';
+function getSesi() {
+  try {
+    const raw = localStorage.getItem(K_SESSION);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    return v && v.username && v.token ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Base URL worker: dari pengaturan sync, atau ?api=... di URL. */
+function resolveApiBase() {
+  const fromQuery = new URLSearchParams(location.search).get('api');
+  if (fromQuery) {
+    localStorage.setItem('absensi.apibase.v1', fromQuery.replace(/\/$/, ''));
+    return fromQuery.replace(/\/$/, '');
+  }
+  const saved = localStorage.getItem('absensi.apibase.v1');
+  if (saved) return saved;
+  const fromSync = load(syncKey, DEFAULT_SYNC).url;
+  return fromSync ? String(fromSync).replace(/\/$/, '') : '';
+}
+
+async function apiFetch(path, options = {}) {
+  if (!apiBase) throw new Error('Endpoint API belum diatur.');
+  const res = await fetch(apiBase + path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
 }
 
 /* ---------- toast ---------- */
@@ -95,7 +96,7 @@ const DEFAULT_SETTINGS = {
   jamNormalHarian: 9,    // basis jam kerja normal
 };
 
-const DEFAULT_SYNC = { url: '', token: '' };
+const DEFAULT_SYNC = { url: '' };
 
 function load(key, fallback) {
   try {
@@ -394,55 +395,17 @@ function setSyncState(state, text) {
 }
 
 function syncEnabled() {
-  return Boolean(sync.url);
-}
-
-async function api(path, options = {}) {
-  const res = await fetch(sync.url.replace(/\/$/, '') + path, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(sync.token ? { Authorization: `Bearer ${sync.token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
-async function pullSync() {
-  if (!syncEnabled()) return setSyncState('off', 'lokal');
-  setSyncState('busy', 'menyinkron');
-  try {
-    const data = await api('/api/records');
-    if (Array.isArray(data.records)) {
-      records = data.records;
-      simpanLokal();
-      renderRekap();
-    }
-    setSyncState('on', 'tersinkron');
-  } catch (e) {
-    console.warn(e);
-    setSyncState('err', 'gagal');
-  }
+  return Boolean(apiBase && authToken);
 }
 
 let pushTimer = null;
+/** Kirim perubahan lokal ke server (debounce). */
 function pushSync() {
   if (!syncEnabled()) return;
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(async () => {
+  pushTimer = setTimeout(() => {
     setSyncState('busy', 'mengirim');
-    try {
-      await api('/api/records', {
-        method: 'PUT',
-        body: JSON.stringify({ records }),
-      });
-      setSyncState('on', 'tersinkron');
-    } catch (e) {
-      console.warn(e);
-      setSyncState('err', 'gagal');
-    }
+    pushDataServer();
   }, 700);
 }
 
@@ -463,7 +426,6 @@ function isiFormDariSettings() {
   $('jamPulangNormal').value = settings.jamPulangNormal;
   $('tarifHarian').value = settings.tarifHarian;
   $('syncUrl').value = sync.url || '';
-  $('syncToken').value = sync.token || '';
 }
 
 function bacaSettingsDariForm() {
@@ -473,7 +435,11 @@ function bacaSettingsDariForm() {
     jamPulangNormal: $('jamPulangNormal').value || '17:00',
     tarifHarian: Number($('tarifHarian').value) || 0,
   };
-  sync = { url: $('syncUrl').value.trim(), token: $('syncToken').value.trim() };
+  sync = { url: $('syncUrl').value.trim() };
+  if (sync.url) {
+    apiBase = sync.url.replace(/\/$/, '');
+    localStorage.setItem('absensi.apibase.v1', apiBase);
+  }
   save(settingsKey, settings);
   save(syncKey, sync);
 }
@@ -491,8 +457,7 @@ function initApp() {
   });
 
   renderRekap();
-  setSyncState(syncEnabled() ? 'busy' : 'off', syncEnabled() ? 'menghubungkan' : 'lokal');
-  if (syncEnabled()) pullSync();
+  setSyncState('off', 'lokal');
 
   const jamSekarang = () => {
     const t = nowHHMM();
@@ -536,25 +501,19 @@ function initApp() {
       })
   );
 
-  ['syncUrl', 'syncToken'].forEach((id) => $(id).addEventListener('change', bacaSettingsDariForm));
+  ['syncUrl'].forEach((id) => $(id).addEventListener('change', bacaSettingsDariForm));
 
   $('btnSync').addEventListener('click', async () => {
     bacaSettingsDariForm();
+    apiBase = resolveApiBase();
     if (!syncEnabled()) {
-      toast('Isi Endpoint Sync di Pengaturan dulu.', 'err');
+      toast('Isi Endpoint API di Pengaturan dulu.', 'err');
       bukaPengaturan(true);
       return;
     }
-    await pullSync();
-    await api('/api/records', { method: 'PUT', body: JSON.stringify({ records }) })
-      .then(() => {
-        setSyncState('on', 'tersinkron');
-        toast('Sinkronisasi selesai', 'ok');
-      })
-      .catch(() => {
-        setSyncState('err', 'gagal');
-        toast('Gagal mengirim data', 'err');
-      });
+    await pullDataServer();
+    await pushDataServer();
+    toast('Sinkronisasi selesai', 'ok');
   });
 }
 
@@ -593,10 +552,11 @@ function tutupModalAuth() {
   tampilkanErrorAuth('');
 }
 
-function terapkanSesi(username) {
-  currentUser = username;
-  const aktif = Boolean(username);
+function terapkanSesi(username, token) {
+  currentUser = username || null;
+  authToken = token || '';
 
+  const aktif = Boolean(currentUser);
   if (aktif) {
     const safe = normUser(username).replace(/[^a-z0-9._-]/g, '_');
     recordsKey = `${K_RECORDS}::${safe}`;
@@ -616,13 +576,14 @@ function terapkanSesi(username) {
   $('userMenu').hidden = !aktif;
   $('btnLoginTop').hidden = aktif;
   if (aktif) {
-    $('userName').textContent = username;
-    $('userAvatar').textContent = username.slice(0, 1);
+    $('userName').textContent = currentUser;
+    $('userAvatar').textContent = currentUser.slice(0, 1);
     $('userDropdown').hidden = true;
+    setSyncState('busy', 'menyinkron');
+    pullDataServer();
+  } else {
+    setSyncState('off', 'lokal');
   }
-
-  setSyncState(syncEnabled() ? 'busy' : 'off', syncEnabled() ? 'menghubungkan' : 'lokal');
-  if (syncEnabled()) pullSync();
 }
 
 async function prosesAuth(e) {
@@ -630,55 +591,103 @@ async function prosesAuth(e) {
   const username = $('authUsername').value.trim();
   const password = $('authPassword').value;
   const password2 = $('authPassword2').value;
-  const users = loadUsers();
 
+  if (!apiBase) {
+    return tampilkanErrorAuth('Endpoint API belum diatur. Buka Pengaturan dan isi URL worker.');
+  }
   if (!username) return tampilkanErrorAuth('Username wajib diisi.');
   if (username.length < 3) return tampilkanErrorAuth('Username minimal 3 karakter.');
-  if (!/^[a-zA-Z0-9._-]+$/.test(username)) return tampilkanErrorAuth('Username hanya huruf, angka, titik, garis bawah, minus.');
-
-  const key = normUser(username);
-
+  if (!/^[a-zA-Z0-9._-]+$/.test(username)) {
+    return tampilkanErrorAuth('Username hanya huruf, angka, titik, garis bawah, minus.');
+  }
   if (!password) return tampilkanErrorAuth('Password wajib diisi.');
   if (password.length < 6) return tampilkanErrorAuth('Password minimal 6 karakter.');
+  if (authMode === 'daftar' && password !== password2) {
+    return tampilkanErrorAuth('Konfirmasi password tidak sama.');
+  }
 
   $('btnSubmitAuth').disabled = true;
+  tampilkanErrorAuth('');
 
   try {
-    if (authMode === 'daftar') {
-      if (users[key]) return tampilkanErrorAuth('Username sudah terdaftar.');
-      if (password !== password2) return tampilkanErrorAuth('Konfirmasi password tidak sama.');
+    const path = authMode === 'daftar' ? '/api/register' : '/api/login';
+    const data = await apiFetch(path, {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
 
-      const salt = randomSalt();
-      const hash = await hashPassword(password, salt);
-      users[key] = { username, salt, hash, dibuat: new Date().toISOString() };
-      saveUsers(users);
-
-      setSession(username);
-      terapkanSesi(username);
-      tutupModalAuth();
-      toast(`Akun ${username} dibuat. Selamat datang!`, 'ok');
-    } else {
-      const u = users[key];
-      if (!u) return tampilkanErrorAuth('Username belum terdaftar.');
-      const hash = await hashPassword(password, u.salt);
-      if (hash !== u.hash) return tampilkanErrorAuth('Password salah.');
-
-      setSession(u.username);
-      terapkanSesi(u.username);
-      tutupModalAuth();
-      toast(`Selamat datang, ${u.username}`, 'ok');
-    }
+    simpanSesi(data.username, data.api_key);
+    terapkanSesi(data.username, data.api_key);
+    tutupModalAuth();
+    toast(
+      authMode === 'daftar'
+        ? `Akun ${data.username} dibuat. Selamat datang!`
+        : `Selamat datang, ${data.username}`,
+      'ok'
+    );
   } catch (err) {
-    console.error(err);
-    tampilkanErrorAuth('Terjadi kesalahan. Coba lagi.');
+    console.warn(err);
+    tampilkanErrorAuth(err.message || 'Gagal menghubungi server.');
   } finally {
     $('btnSubmitAuth').disabled = false;
   }
 }
 
+/** Ambil data (absensi + pengaturan) dari server dan perbarui tampilan. */
+async function pullDataServer() {
+  if (!apiBase || !authToken) return;
+  setSyncState('busy', 'menyinkron');
+  try {
+    const [rec, set] = await Promise.all([
+      apiFetch('/api/records'),
+      apiFetch('/api/settings'),
+    ]);
+
+    if (Array.isArray(rec.records)) {
+      records = rec.records;
+      save(recordsKey, records);
+    }
+    if (set.settings) {
+      settings = { ...DEFAULT_SETTINGS, ...set.settings };
+      save(settingsKey, settings);
+      isiFormDariSettings();
+    }
+
+    renderRekap();
+    setSyncState('on', 'tersinkron');
+  } catch (err) {
+    console.warn(err);
+    setSyncState('err', 'gagal');
+    toast('Gagal mengambil data dari server', 'err');
+  }
+}
+
+/** Kirim data lokal ke server. */
+async function pushDataServer() {
+  if (!apiBase || !authToken) return;
+  try {
+    await apiFetch('/api/records', { method: 'PUT', body: JSON.stringify({ records }) });
+    await apiFetch('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        settings: {
+          nama: settings.nama,
+          jamMasukNormal: settings.jamMasukNormal,
+          jamPulangNormal: settings.jamPulangNormal,
+          tarifHarian: settings.tarifHarian,
+        },
+      }),
+    });
+    setSyncState('on', 'tersinkron');
+  } catch (err) {
+    console.warn(err);
+    setSyncState('err', 'gagal');
+  }
+}
+
 function keluar() {
   if (!confirm('Keluar dari akun ini?')) return;
-  setSession('');
+  simpanSesi('', '');
   terapkanSesi('');
   resetForm();
   renderRekap();
@@ -725,12 +734,13 @@ function initAuth() {
 }
 
 function boot() {
+  apiBase = resolveApiBase();
   initApp();
   initAuth();
 
-  const sesi = getSession();
+  const sesi = getSesi();
   if (sesi) {
-    terapkanSesi(sesi);
+    terapkanSesi(sesi.username, sesi.token);
   } else {
     terapkanSesi('');
     bukaModalAuth('login');
