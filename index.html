@@ -3,119 +3,159 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#f6f7fb" />
 <title>Absensi — Kehadiran, Lembur &amp; Gaji</title>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<header class="topbar">
-  <div>
-    <h1>Absensi</h1>
-    <span class="tag">Kehadiran manual, lembur &amp; gaji dihitung otomatis</span>
+
+<header class="appbar">
+  <div class="brand">
+    <div class="brand-mark">A</div>
+    <div class="brand-text">
+      <h1>Absensi</h1>
+      <p>Kehadiran, lembur &amp; gaji otomatis</p>
+    </div>
   </div>
-  <div class="topbar-actions">
-    <span id="syncState" class="pill off">offline</span>
-    <button id="btnSync" class="btn small" type="button">Sync Turso</button>
-    <button id="btnPengaturan" class="btn small" type="button">Pengaturan</button>
+  <div class="appbar-actions">
+    <span id="syncState" class="chip chip-off" title="Status sinkronisasi">lokal</span>
+    <button id="btnSync" class="btn btn-ghost" type="button">Sync</button>
+    <button id="btnPengaturan" class="btn btn-ghost" type="button">Pengaturan</button>
   </div>
 </header>
 
-<main>
-  <section class="card" id="cardPengaturan" hidden>
-    <h2>Pengaturan Kerja &amp; Sync</h2>
-    <div class="grid">
-      <label>Nama Karyawan
-        <input id="nama" type="text" placeholder="Nama karyawan" />
-      </label>
-      <label>Jam Masuk Normal
-        <input id="jamMasukNormal" type="time" value="08:00" />
-      </label>
-      <label>Jam Pulang Normal
-        <input id="jamPulangNormal" type="time" value="17:00" />
-      </label>
-      <label>Toleransi Telat (menit)
-        <input id="toleransi" type="number" min="0" step="1" value="10" />
-      </label>
-      <label>Gaji Pokok / Bulan (Rp)
-        <input id="gajiPokok" type="number" min="0" step="1000" value="0" />
-      </label>
-      <label>Tunjangan / Bulan (Rp)
-        <input id="tunjangan" type="number" min="0" step="1000" value="0" />
-      </label>
-      <label>Hari Kerja Efektif / Bulan
-        <input id="hariEfektif" type="number" min="1" max="31" step="1" value="22" />
-      </label>
-      <label>Tarif Lembur / Jam (Rp)
-        <input id="tarifLembur" type="number" min="0" step="500" value="0" />
-      </label>
-      <label>Potongan Terlambat / Menit (Rp)
-        <input id="potonganMenit" type="number" min="0" step="500" value="0" />
-      </label>
-      <label>Endpoint Sync (Worker URL)
-        <input id="syncUrl" type="url" placeholder="https://absensi-api.xxx.workers.dev" />
-      </label>
-      <label>Sync Token
-        <input id="syncToken" type="password" placeholder="token rahasia" autocomplete="off" />
-      </label>
-    </div>
-    <p class="hint">Kosongkan Endpoint Sync bila ingin memakai mode lokal saja. Token disimpan di perangkat ini.</p>
-  </section>
+<main class="layout">
 
-  <section class="card">
-    <h2>Catat Kehadiran</h2>
-    <p class="hint">Mencatat manual; jam datang/pulang terisi otomatis dari jam sekarang tetapi bisa diubah.</p>
-    <div class="row">
-      <label>Tanggal
-        <input id="tanggal" type="date" />
-      </label>
-      <label>Jam Datang
-        <input id="jamDatang" type="time" />
-      </label>
-      <label>Jam Pulang
-        <input id="jamPulang" type="time" />
-      </label>
-      <label>Status
-        <select id="status">
-          <option value="hadir">Hadir</option>
-          <option value="izin">Izin</option>
-          <option value="sakit">Sakit</option>
-          <option value="cuti">Cuti</option>
-        </select>
-      </label>
-      <label>Catatan
-        <input id="catatan" type="text" placeholder="opsional" />
-      </label>
-    </div>
-    <div class="row" style="margin-top:12px">
-      <button id="btnMasuk" class="btn primary" type="button">Isi Jam Datang = Sekarang</button>
-      <button id="btnPulang" class="btn" type="button">Isi Jam Pulang = Sekarang</button>
-      <button id="btnTambah" class="btn primary" type="button">Simpan Absensi</button>
-    </div>
-  </section>
+  <!-- Kolom kiri: input -->
+  <div class="col">
 
-  <section class="card">
-    <div class="card-head">
-      <h2>Rekap</h2>
-      <div class="row compact">
-        <label>Periode
-          <input id="periode" type="month" />
+    <section class="card" id="cardPengaturan" hidden>
+      <div class="card-head">
+        <h2>Pengaturan</h2>
+        <button id="btnTutupPengaturan" class="btn btn-icon" type="button" aria-label="Tutup">✕</button>
+      </div>
+      <div class="grid">
+        <label class="field">Nama Karyawan
+          <input id="nama" type="text" placeholder="Nama karyawan" />
+        </label>
+        <label class="field">Jam Masuk Normal
+          <input id="jamMasukNormal" type="time" value="08:00" />
+        </label>
+        <label class="field">Jam Pulang Normal
+          <input id="jamPulangNormal" type="time" value="17:00" />
+        </label>
+        <label class="field">Toleransi Telat (menit)
+          <input id="toleransi" type="number" min="0" step="1" value="10" />
+        </label>
+        <label class="field">Gaji Pokok / Bulan
+          <input id="gajiPokok" type="number" min="0" step="1000" value="0" />
+        </label>
+        <label class="field">Tunjangan / Bulan
+          <input id="tunjangan" type="number" min="0" step="1000" value="0" />
+        </label>
+        <label class="field">Hari Kerja Efektif
+          <input id="hariEfektif" type="number" min="1" max="31" step="1" value="22" />
+        </label>
+        <label class="field">Tarif Lembur / Jam
+          <input id="tarifLembur" type="number" min="0" step="500" value="0" />
+        </label>
+        <label class="field">Potongan Telat / Menit
+          <input id="potonganMenit" type="number" min="0" step="500" value="0" />
         </label>
       </div>
-    </div>
-    <div class="stats">
-      <div class="stat"><span>Hari Hadir</span><strong id="rHadir">0</strong></div>
-      <div class="stat"><span>Telat</span><strong id="rTelat">0x</strong></div>
-      <div class="stat"><span>Total Jam Kerja</span><strong id="rJam">0 jam</strong></div>
-      <div class="stat"><span>Total Lembur</span><strong id="rLembur">0 jam</strong></div>
-      <div class="stat"><span>Potongan Telat</span><strong id="rPotongan">Rp 0</strong></div>
-      <div class="stat"><span>Gaji Bersih</span><strong id="rGaji">Rp 0</strong></div>
-    </div>
-    <ul class="breakdown" id="breakdown"></ul>
-  </section>
 
-  <section class="card">
+      <h3 class="subhead">Sinkronisasi (opsional)</h3>
+      <div class="grid">
+        <label class="field">Endpoint Sync (Worker URL)
+          <input id="syncUrl" type="url" placeholder="https://absensi-api.xxx.workers.dev" />
+        </label>
+        <label class="field">Sync Token
+          <input id="syncToken" type="password" placeholder="token rahasia" autocomplete="off" />
+        </label>
+      </div>
+      <p class="hint">Kosongkan Endpoint Sync untuk mode lokal saja. Token disimpan hanya di perangkat ini.</p>
+    </section>
+
+    <section class="card card-accent">
+      <div class="card-head">
+        <h2>Catat Kehadiran</h2>
+        <span class="chip chip-soft" id="todayLabel"></span>
+      </div>
+
+      <div class="quick">
+        <button id="btnMasuk" class="btn btn-quick" type="button">
+          <span class="q-ico">→</span>
+          <span class="q-txt"><strong>Datang sekarang</strong><small id="nowMasuk">--:--</small></span>
+        </button>
+        <button id="btnPulang" class="btn btn-quick" type="button">
+          <span class="q-ico">←</span>
+          <span class="q-txt"><strong>Pulang sekarang</strong><small id="nowPulang">--:--</small></span>
+        </button>
+      </div>
+
+      <div class="grid">
+        <label class="field">Tanggal
+          <input id="tanggal" type="date" />
+        </label>
+        <label class="field">Jam Datang
+          <input id="jamDatang" type="time" />
+        </label>
+        <label class="field">Jam Pulang
+          <input id="jamPulang" type="time" />
+        </label>
+        <label class="field">Status
+          <select id="status">
+            <option value="hadir">Hadir</option>
+            <option value="izin">Izin</option>
+            <option value="sakit">Sakit</option>
+            <option value="cuti">Cuti</option>
+          </select>
+        </label>
+        <label class="field field-wide">Catatan
+          <input id="catatan" type="text" placeholder="opsional" />
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <button id="btnTambah" class="btn btn-primary" type="button">Simpan Absensi</button>
+        <button id="btnBatal" class="btn btn-ghost" type="button" hidden>Batal edit</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Kolom kanan: rekap -->
+  <div class="col">
+    <section class="card">
+      <div class="card-head">
+        <h2>Rekap</h2>
+        <input id="periode" type="month" class="month-input" />
+      </div>
+
+      <div class="hero-stat">
+        <span>Gaji Bersih</span>
+        <strong id="rGaji">Rp 0</strong>
+        <em id="heroSub">belum ada data</em>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><span>Hadir</span><strong id="rHadir">0</strong><small>hari</small></div>
+        <div class="stat"><span>Telat</span><strong id="rTelat">0</strong><small>kali</small></div>
+        <div class="stat"><span>Jam Kerja</span><strong id="rJam">0</strong><small>jam</small></div>
+        <div class="stat"><span>Lembur</span><strong id="rLembur">0</strong><small>jam</small></div>
+      </div>
+
+      <ul class="breakdown" id="breakdown"></ul>
+    </section>
+  </div>
+
+  <!-- Tabel penuh -->
+  <section class="card card-table">
     <div class="card-head">
       <h2>Daftar Absensi</h2>
-      <button id="btnExport" class="btn small" type="button">Export CSV</button>
+      <div class="head-actions">
+        <span class="chip chip-soft" id="countLabel">0 entri</span>
+        <button id="btnExport" class="btn btn-ghost" type="button">Export CSV</button>
+      </div>
     </div>
     <div class="table-wrap">
       <table id="tabelAbsen">
@@ -124,22 +164,30 @@
             <th>Tanggal</th>
             <th>Datang</th>
             <th>Pulang</th>
-            <th>Jam Kerja</th>
+            <th>Kerja</th>
             <th>Lembur</th>
             <th>Telat</th>
             <th>Status</th>
             <th>Catatan</th>
-            <th>Aksi</th>
+            <th class="th-aksi">Aksi</th>
           </tr>
         </thead>
         <tbody></tbody>
       </table>
     </div>
-    <p id="emptyAbsen" class="hint">Belum ada data absensi pada periode ini.</p>
+    <div id="emptyAbsen" class="empty">
+      <div class="empty-ico">🗓️</div>
+      <p>Belum ada absensi di periode ini.</p>
+      <small>Isi jam datang &amp; pulang di form Catat Kehadiran.</small>
+    </div>
   </section>
 </main>
 
-<footer><span>Absensi &middot; data lokal + sinkronisasi Turso opsional</span></footer>
+<footer class="foot">
+  <span>Absensi &middot; data lokal + sinkronisasi Turso opsional</span>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="app.js"></script>
 </body>

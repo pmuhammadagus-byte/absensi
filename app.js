@@ -10,6 +10,19 @@ const $ = (id) => document.getElementById(id);
 const rupiah = (n) => 'Rp ' + Math.round(Number(n) || 0).toLocaleString('id-ID');
 const angka = (n) => (Math.round(Number(n) * 100) / 100).toLocaleString('id-ID');
 
+/* ---------- toast ---------- */
+let toastTimer = null;
+function toast(message, kind = '') {
+  const el = $('toast');
+  if (!el) return;
+  el.textContent = message;
+  el.className = 'toast show ' + kind;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.className = 'toast ' + kind;
+  }, 2600);
+}
+
 const DEFAULT_SETTINGS = {
   nama: '',
   jamMasukNormal: '08:00',
@@ -150,22 +163,28 @@ function renderRekap() {
   const r = rekap(periode);
 
   $('rHadir').textContent = r.jumlahHadir;
-  $('rTelat').textContent = r.jumlahTelat + 'x';
-  $('rJam').textContent = angka(r.totalJamKerja) + ' jam';
-  $('rLembur').textContent = angka(r.totalLembur) + ' jam';
-  $('rPotongan').textContent = rupiah(r.potonganTelat);
+  $('rTelat').textContent = r.jumlahTelat;
+  $('rJam').textContent = angka(r.totalJamKerja);
+  $('rLembur').textContent = angka(r.totalLembur);
   $('rGaji').textContent = rupiah(r.gajiBersih);
 
+  const namaBulan = periode
+    ? new Date(periode + '-01').toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
+    : '';
+  $('heroSub').textContent = r.jumlahHadir
+    ? `${r.jumlahHadir} hari hadir · ${angka(r.totalLembur)} jam lembur · ${namaBulan}`
+    : 'belum ada data pada periode ini';
+
   const rows = [
-    ['Honor harian', rupiah(r.honorHarian)],
-    [`Gaji harian × ${r.jumlahHadir} hari`, rupiah(r.gajiHarian)],
-    [`Lembur ${angka(r.totalLembur)} jam`, '+ ' + rupiah(r.upahLembur)],
-    [`Telat ${r.totalTelatMenit} menit`, '− ' + rupiah(r.potonganTelat)],
+    ['Honor harian', rupiah(r.honorHarian), ''],
+    [`Gaji harian × ${r.jumlahHadir} hari`, rupiah(r.gajiHarian), ''],
+    [`Upah lembur ${angka(r.totalLembur)} jam`, '+ ' + rupiah(r.upahLembur), 'pos'],
+    [`Potongan telat ${r.totalTelatMenit} menit`, '− ' + rupiah(r.potonganTelat), 'neg'],
   ];
 
-  $('breakdown').innerHTML =
-    rows.map(([k, v]) => `<li><span>${k}</span><span>${v}</span></li>`).join('') +
-    `<li class="total"><span>Gaji Bersih</span><span>${rupiah(r.gajiBersih)}</span></li>`;
+  $('breakdown').innerHTML = rows
+    .map(([k, v, cls]) => `<li class="${cls}"><span>${k}</span><span>${v}</span></li>`)
+    .join('');
 
   renderTabel(r.list);
 }
@@ -173,27 +192,30 @@ function renderRekap() {
 function renderTabel(list) {
   const tbody = $('tabelAbsen').querySelector('tbody');
 
+  $('countLabel').textContent = list.length + ' entri';
+
   tbody.innerHTML = list
-    .map((r, i) => {
-      const late = r.telat > 0 ? ' <span class="badge late">telat</span>' : '';
+    .map((r) => {
+      const late = r.telat > 0 ? `<span class="badge late">+${r.telat}m</span>` : '';
       return `<tr>
         <td>${r.tanggal}</td>
-        <td>${r.jamDatang || '-'}</td>
-        <td>${r.jamPulang || '-'}</td>
-        <td>${angka(r.jamKerja)} jam</td>
-        <td>${angka(r.lembur)} jam</td>
-        <td>${r.telat ? r.telat + ' mnt' + late : '-'}</td>
+        <td>${r.jamDatang || '—'}</td>
+        <td>${r.jamPulang || '—'}</td>
+        <td>${angka(r.jamKerja)}j</td>
+        <td>${r.lembur ? angka(r.lembur) + 'j' : '—'}</td>
+        <td>${r.telat ? r.telat + 'm' + late : '—'}</td>
         <td><span class="badge ${r.status || 'hadir'}">${r.status || 'hadir'}</span></td>
-        <td>${r.catatan ? escapeHtml(r.catatan) : '-'}</td>
-        <td>
-          <button class="btn small" data-edit="${r.id}" type="button">Edit</button>
-          <button class="btn small danger" data-hapus="${r.id}" type="button">Hapus</button>
+        <td>${r.catatan ? escapeHtml(r.catatan) : '—'}</td>
+        <td class="td-aksi">
+          <button class="btn btn-sm btn-soft" data-edit="${r.id}" type="button">Edit</button>
+          <button class="btn btn-sm btn-danger" data-hapus="${r.id}" type="button">Hapus</button>
         </td>
       </tr>`;
     })
     .join('');
 
-  $('emptyAbsen').style.display = list.length ? 'none' : 'block';
+  $('emptyAbsen').classList.toggle('show', list.length === 0);
+  $('tabelAbsen').style.display = list.length ? '' : 'none';
 
   tbody.querySelectorAll('[data-hapus]').forEach((btn) => {
     btn.addEventListener('click', () => hapusRecord(btn.dataset.hapus));
@@ -223,6 +245,7 @@ function hapusRecord(id) {
   simpanLokal();
   renderRekap();
   pushSync();
+  toast('Absensi dihapus');
 }
 
 function muatKeForm(id) {
@@ -235,6 +258,7 @@ function muatKeForm(id) {
   $('catatan').value = r.catatan || '';
   $('btnTambah').textContent = 'Perbarui Absensi';
   $('btnTambah').dataset.editId = id;
+  $('btnBatal').hidden = false;
   $('tanggal').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -245,19 +269,20 @@ function resetForm() {
   $('status').value = 'hadir';
   $('catatan').value = '';
   $('btnTambah').textContent = 'Simpan Absensi';
+  $('btnBatal').hidden = true;
   delete $('btnTambah').dataset.editId;
 }
 
 function simpanAbsensi() {
   const tanggal = $('tanggal').value;
-  if (!tanggal) return alert('Tanggal wajib diisi.');
+  if (!tanggal) return toast('Tanggal wajib diisi.', 'err');
 
   const status = $('status').value;
   const jamDatang = $('jamDatang').value;
   const jamPulang = $('jamPulang').value;
 
   if (status === 'hadir' && (!jamDatang || !jamPulang)) {
-    return alert('Untuk status hadir, jam datang dan jam pulang wajib diisi.');
+    return toast('Untuk status hadir, jam datang dan pulang wajib diisi.', 'err');
   }
 
   const payload = {
@@ -271,11 +296,13 @@ function simpanAbsensi() {
   const editId = $('btnTambah').dataset.editId;
   if (editId) {
     records = records.map((r) => (r.id === editId ? { ...r, ...payload } : r));
+    toast('Absensi diperbarui', 'ok');
   } else {
     const dup = records.find((r) => r.tanggal === tanggal);
     if (dup && !confirm(`Tanggal ${tanggal} sudah ada. Timpa?`)) return;
     records = records.filter((r) => r.tanggal !== tanggal);
     records.push({ id: newId(), ...payload });
+    toast('Absensi tersimpan', 'ok');
   }
 
   simpanLokal();
@@ -287,7 +314,7 @@ function simpanAbsensi() {
 
 function exportCsv() {
   const list = recordsPeriode($('periode').value);
-  if (!list.length) return alert('Tidak ada data untuk diekspor.');
+  if (!list.length) return toast('Tidak ada data untuk diekspor.', 'err');
 
   const head = ['tanggal', 'jam_datang', 'jam_pulang', 'jam_kerja', 'lembur', 'telat_menit', 'status', 'catatan'];
   const lines = [head.join(',')].concat(
@@ -309,7 +336,8 @@ function exportCsv() {
 
 function setSyncState(state, text) {
   const el = $('syncState');
-  el.className = 'pill ' + state;
+  const map = { on: 'chip-on', off: 'chip-off', busy: 'chip-busy', err: 'chip-err' };
+  el.className = 'chip ' + (map[state] || 'chip-off');
   el.textContent = text;
 }
 
@@ -331,8 +359,8 @@ async function api(path, options = {}) {
 }
 
 async function pullSync() {
-  if (!syncEnabled()) return setSyncState('off', 'offline');
-  setSyncState('busy', 'sync...');
+  if (!syncEnabled()) return setSyncState('off', 'lokal');
+  setSyncState('busy', 'menyinkron');
   try {
     const data = await api('/api/records');
     if (Array.isArray(data.records)) {
@@ -343,7 +371,7 @@ async function pullSync() {
     setSyncState('on', 'tersinkron');
   } catch (e) {
     console.warn(e);
-    setSyncState('err', 'gagal sync');
+    setSyncState('err', 'gagal');
   }
 }
 
@@ -352,7 +380,7 @@ function pushSync() {
   if (!syncEnabled()) return;
   clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
-    setSyncState('busy', 'mengirim...');
+    setSyncState('busy', 'mengirim');
     try {
       await api('/api/records', {
         method: 'PUT',
@@ -361,7 +389,7 @@ function pushSync() {
       setSyncState('on', 'tersinkron');
     } catch (e) {
       console.warn(e);
-      setSyncState('err', 'gagal kirim');
+      setSyncState('err', 'gagal');
     }
   }, 700);
 }
@@ -412,26 +440,58 @@ function init() {
   isiFormDariSettings();
   resetForm();
   $('periode').value = todayStr().slice(0, 7);
+
+  const tgl = new Date();
+  $('todayLabel').textContent = tgl.toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'short',
+  });
+
   renderRekap();
-  setSyncState(syncEnabled() ? 'busy' : 'off', syncEnabled() ? 'menghubungkan' : 'offline');
+  setSyncState(syncEnabled() ? 'busy' : 'off', syncEnabled() ? 'menghubungkan' : 'lokal');
   if (syncEnabled()) pullSync();
 
-  $('btnMasuk').addEventListener('click', () => ($('jamDatang').value = nowHHMM()));
-  $('btnPulang').addEventListener('click', () => ($('jamPulang').value = nowHHMM()));
+  const jamSekarang = () => {
+    const t = nowHHMM();
+    $('nowMasuk').textContent = t;
+    $('nowPulang').textContent = t;
+  };
+  jamSekarang();
+  setInterval(jamSekarang, 20000);
+
+  $('btnMasuk').addEventListener('click', () => {
+    $('jamDatang').value = nowHHMM();
+    toast('Jam datang diisi ' + $('jamDatang').value);
+  });
+  $('btnPulang').addEventListener('click', () => {
+    $('jamPulang').value = nowHHMM();
+    toast('Jam pulang diisi ' + $('jamPulang').value);
+  });
   $('btnTambah').addEventListener('click', simpanAbsensi);
+  $('btnBatal').addEventListener('click', resetForm);
   $('btnExport').addEventListener('click', exportCsv);
   $('periode').addEventListener('change', renderRekap);
 
-  $('btnPengaturan').addEventListener('click', () => {
+  const bukaPengaturan = (buka) => {
     const card = $('cardPengaturan');
-    card.hidden = !card.hidden;
+    card.hidden = buka === undefined ? !card.hidden : !buka;
+    if (!card.hidden) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  $('btnPengaturan').addEventListener('click', () => bukaPengaturan());
+  $('btnTutupPengaturan').addEventListener('click', () => {
+    bacaSettingsDariForm();
+    renderRekap();
+    bukaPengaturan(false);
   });
 
   ['nama', 'jamMasukNormal', 'jamPulangNormal', 'toleransi', 'gajiPokok', 'tunjangan', 'hariEfektif', 'tarifLembur', 'potonganMenit'].forEach(
-    (id) => $(id).addEventListener('change', () => {
-      bacaSettingsDariForm();
-      renderRekap();
-    })
+    (id) =>
+      $(id).addEventListener('change', () => {
+        bacaSettingsDariForm();
+        renderRekap();
+      })
   );
 
   ['syncUrl', 'syncToken'].forEach((id) => $(id).addEventListener('change', bacaSettingsDariForm));
@@ -439,13 +499,20 @@ function init() {
   $('btnSync').addEventListener('click', async () => {
     bacaSettingsDariForm();
     if (!syncEnabled()) {
-      alert('Isi Endpoint Sync di Pengaturan terlebih dahulu.');
+      toast('Isi Endpoint Sync di Pengaturan dulu.', 'err');
+      bukaPengaturan(true);
       return;
     }
     await pullSync();
     await api('/api/records', { method: 'PUT', body: JSON.stringify({ records }) })
-      .then(() => setSyncState('on', 'tersinkron'))
-      .catch(() => setSyncState('err', 'gagal kirim'));
+      .then(() => {
+        setSyncState('on', 'tersinkron');
+        toast('Sinkronisasi selesai', 'ok');
+      })
+      .catch(() => {
+        setSyncState('err', 'gagal');
+        toast('Gagal mengirim data', 'err');
+      });
   });
 }
 
