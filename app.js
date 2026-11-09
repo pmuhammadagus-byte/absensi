@@ -28,9 +28,6 @@ const DEFAULT_SETTINGS = {
   jamMasukNormal: '08:00',
   jamPulangNormal: '17:00',
   toleransi: 10,
-  gajiPokok: 0,
-  tunjangan: 0,
-  hariEfektif: 22,
   tarifHarian: 0,        // tarif untuk 9 jam kerja normal
   jamNormalHarian: 9,    // basis jam kerja normal
   potonganMenit: 0,
@@ -131,14 +128,11 @@ function rekap(periode) {
   const totalLembur = hadir.reduce((a, r) => a + r.lembur, 0);
   const totalTelatMenit = hadir.reduce((a, r) => a + r.telat, 0);
 
-  const hariEfektif = Math.max(1, Number(settings.hariEfektif) || 22);
   const JAM_NORMAL = Number(settings.jamNormalHarian) || 9;
   const tarifHarian = Number(settings.tarifHarian || 0);
-  const gajiPokok = Number(settings.gajiPokok) || 0;
-  const tunjangan = Number(settings.tunjangan) || 0;
 
-  // Upah harian: pakai tarif harian bila diisi, kalau tidak dari (gaji pokok + tunjangan) / hari efektif
-  const honorHarian = tarifHarian > 0 ? tarifHarian : (gajiPokok + tunjangan) / hariEfektif;
+  // Upah harian murni dari tarif harian (9 jam kerja normal)
+  const honorHarian = tarifHarian;
   const gajiHarian = honorHarian * hadir.length;
   const tarifPerJam = honorHarian / JAM_NORMAL;
   const upahLembur = totalLembur * tarifPerJam;
@@ -416,9 +410,6 @@ function isiFormDariSettings() {
   $('jamMasukNormal').value = settings.jamMasukNormal;
   $('jamPulangNormal').value = settings.jamPulangNormal;
   $('toleransi').value = settings.toleransi;
-  $('gajiPokok').value = settings.gajiPokok;
-  $('tunjangan').value = settings.tunjangan;
-  $('hariEfektif').value = settings.hariEfektif;
   $('tarifHarian').value = settings.tarifHarian;
   $('potonganMenit').value = settings.potonganMenit;
   $('syncUrl').value = sync.url || '';
@@ -431,9 +422,6 @@ function bacaSettingsDariForm() {
     jamMasukNormal: $('jamMasukNormal').value || '08:00',
     jamPulangNormal: $('jamPulangNormal').value || '17:00',
     toleransi: Number($('toleransi').value) || 0,
-    gajiPokok: Number($('gajiPokok').value) || 0,
-    tunjangan: Number($('tunjangan').value) || 0,
-    hariEfektif: Math.max(1, Number($('hariEfektif').value) || 22),
     tarifHarian: Number($('tarifHarian').value) || 0,
     potonganMenit: Number($('potonganMenit').value) || 0,
   };
@@ -492,7 +480,7 @@ function init() {
     bukaPengaturan(false);
   });
 
-  ['nama', 'jamMasukNormal', 'jamPulangNormal', 'toleransi', 'gajiPokok', 'tunjangan', 'hariEfektif', 'tarifHarian', 'potonganMenit'].forEach(
+  ['nama', 'jamMasukNormal', 'jamPulangNormal', 'toleransi', 'tarifHarian', 'potonganMenit'].forEach(
     (id) =>
       $(id).addEventListener('change', () => {
         bacaSettingsDariForm();

@@ -26,8 +26,7 @@ lembur        = max(0, jam_kerja - JAM_NORMAL)
 telat         = max(0, (jam_datang - (jam_masuk_normal + toleransi)))
 
 tarif_per_jam = tarif_harian / JAM_NORMAL
-honor_harian  = (gaji_pokok + tunjangan) / hari_efektif
-gaji_harian   = honor_harian * jumlah_hari_hadir
+gaji_harian   = tarif_harian * jumlah_hari_hadir
 upah_lembur   = total_lembur_jam * tarif_per_jam
 potongan      = total_telat_menit * potongan_per_menit
 gaji_bersih   = gaji_harian + upah_lembur - potongan
