@@ -1,28 +1,34 @@
-# Hitung Gaji
+# Absensi
 
-Kalkulator gaji sederhana berbasis jam kerja. Jam datang dan jam pulang diisi **manual**.
+Aplikasi absensi sederhana: catat kehadiran **manual** (jam datang & jam pulang terisi otomatis dari jam sekarang, tapi bisa diubah), lalu lembur dan gaji dihitung otomatis.
 
-Live: https://pmuhammadagus-byte.github.io/hitung-gaji/
+Live: https://pmuhammadagus-byte.github.io/absensi/
 
 ## Fitur
 
-- Input data karyawan: gaji pokok, tunjangan, hari kerja efektif, jam kerja normal, tarif lembur, potongan.
-- Absensi manual: tanggal, jam datang, jam pulang. Mendukung shift melewati tengah malam.
-- Perhitungan otomatis: honor harian, gaji harian, lembur, potongan proporsional, gaji bersih.
-- Riwayat perhitungan disimpan di browser (localStorage).
-- Tanpa backend, tanpa dependency — cukup file statis.
+- Catat kehadiran: tanggal, jam datang, jam pulang, status (hadir/izin/sakit/cuti), catatan.
+- Tombol "Isi Jam Datang = Sekarang" / "Isi Jam Pulang = Sekarang" — tetap bisa diedit manual.
+- Perhitungan otomatis per periode (bulanan):
+  - jam kerja = jam pulang − jam datang (shift malam didukung)
+  - lembur = kelebihan atas jam kerja normal
+  - telat = menit setelah jam masuk + toleransi
+  - gaji harian, upah lembur, potongan telat, gaji bersih
+- Edit / hapus absensi, ekspor CSV.
+- Sinkronisasi cloud opsional ke **Turso** (SQLite) melalui Cloudflare Worker.
 
 ## Rumus
 
 ```
-honor_harian   = (gaji_pokok + tunjangan) / hari_efektif
-gaji_harian    = honor_harian * total_hari_hadir
-upah_lembur    = total_jam_lembur * tarif_lembur
-potongan_prop  = (potongan_bulanan / hari_efektif) * total_hari_hadir
-gaji_bersih    = gaji_harian + upah_lembur - potongan_prop
+durasi_normal = jam_pulang_normal - jam_masuk_normal
+jam_kerja     = jam_pulang - jam_datang           (dibulatkan +24 jam bila negatif)
+lembur        = max(0, jam_kerja - durasi_normal)
+telat         = max(0, (jam_datang - (jam_masuk_normal + toleransi)))
 
-jam_kerja = jam_pulang - jam_datang   (dibulatkan +24 jam bila negatif)
-lembur    = max(0, jam_kerja - jam_normal)
+honor_harian  = (gaji_pokok + tunjangan) / hari_efektif
+gaji_harian   = honor_harian * jumlah_hari_hadir
+upah_lembur   = total_lembur_jam * tarif_lembur
+potongan      = total_telat_menit * potongan_per_menit
+gaji_bersih   = gaji_harian + upah_lembur - potongan
 ```
 
 ## Menjalankan lokal
@@ -32,26 +38,51 @@ python3 -m http.server 8080
 # buka http://localhost:8080
 ```
 
-## Database opsional (Turso / SQLite)
+Tanpa konfigurasi apa pun, aplikasi langsung berjalan dalam mode lokal (data di `localStorage`).
 
-Website berjalan penuh tanpa database. Jika nanti ingin sinkronisasi cloud, tersedia `schema.sql` untuk Turso (SQLite):
+## Sinkronisasi Turso
+
+1. Buat database dan terapkan skema:
 
 ```bash
-turso db create hitung-gaji
-turso db shell hitung-gaji < schema.sql
+turso db create absensi
+turso db shell absensi < schema.sql
 ```
 
-Alasan memilih SQLite/Turso: gratis, ringan, HTTP API cocok untuk situs statis, dan tidak butuh server sendiri.
+2. Deploy worker sinkronisasi:
 
-## Alternatif database lain
+```bash
+cd worker
+npm install
+npx wrangler secret put TURSO_DATABASE_URL   # libsql://<db>-<org>.turso.io
+npx wrangler secret put TURSO_AUTH_TOKEN
+npx wrangler secret put SYNC_TOKEN           # token bebas, dipakai juga di web
+npx wrangler deploy
+```
 
-| Database | Cocok untuk |
+3. Buka website → **Pengaturan** → isi `Endpoint Sync` (URL worker) dan `Sync Token`, lalu klik **Sync Turso**.
+
+Selama `Endpoint Sync` kosong, aplikasi tetap berjalan penuh secara lokal.
+
+## Struktur
+
+```
+index.html      UI
+style.css       styling
+app.js          logika absensi, perhitungan, sync
+schema.sql      skema Turso/SQLite
+worker/         Cloudflare Worker untuk API sinkronisasi
+```
+
+## Alternatif database
+
+| Database | Catatan |
 | --- | --- |
-| Turso / SQLite | Situs statis, data relasional kecil, gratis |
-| Cloudflare D1 | Jika sudah pakai Cloudflare Pages/Workers |
-| Firebase Firestore | Realtime sync, SDK JS mudah, gratis tier |
-| MongoDB Atlas | Skema fleksibel, gratis 512MB |
-| Neon / PlanetScale (Postgres/MySQL) | Serverless SQL, gratis tier |
+| Turso / SQLite | dipakai — gratis, ringan, HTTP API |
+| Cloudflare D1 | naturan kalau worker sudah di Cloudflare |
+| Firebase Firestore | realtime, SDK mudah |
+| MongoDB Atlas | skema fleksibel, gratis 512MB |
+| Neon (Postgres) | serverless SQL, gratis tier |
 
 ## Lisensi
 
