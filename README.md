@@ -1,20 +1,20 @@
 # Absensi
 
-Aplikasi absensi sederhana: catat kehadiran **manual** (jam datang & jam pulang terisi otomatis dari jam sekarang, tapi bisa diubah), lalu lembur dan gaji dihitung otomatis.
+Aplikasi absensi: catat kehadiran **manual** (jam datang & jam pulang), lembur dan gaji dihitung otomatis. Mendukung **login multi-user** dengan backend Cloudflare Worker + Turso.
 
 Live: https://pmuhammadagus-byte.github.io/absensi/
 
 ## Fitur
 
-- **Login / daftar** dengan username & password (data per akun, password di-hash SHA-256 + salt).
+- **Login & daftar** username/password (server-side, password di-hash SHA-256 + salt).
 - Catat kehadiran: tanggal, jam datang, jam pulang, status (hadir/izin/sakit/cuti), catatan.
-- Tombol "Isi Jam Datang = Sekarang" / "Isi Jam Pulang = Sekarang" — tetap bisa diedit manual.
+- Tombol "Datang sekarang" / "Pulang sekarang" — jam terisi otomatis, tetap bisa diedit.
 - Perhitungan otomatis per periode (bulanan):
   - jam kerja = jam pulang − jam datang (shift malam didukung)
   - lembur = kelebihan di atas 9 jam kerja normal
-  - gaji harian, upah lembur, gaji bersih
+  - gaji bersih = (tarif harian × hari hadir) + (lembur × tarif per jam)
 - Edit / hapus absensi, ekspor CSV.
-- Sinkronisasi cloud opsional ke **Turso** (SQLite) melalui Cloudflare Worker.
+- **Sync cloud** via Cloudflare Worker + Turso — data tersimpan di server, bisa diakses dari perangkat lain.
 
 ## Rumus
 
@@ -30,65 +30,73 @@ upah_lembur   = total_lembur_jam * tarif_per_jam
 gaji_bersih   = gaji_harian + upah_lembur
 ```
 
-## Akun & keamanan
-
-- Setiap akun punya data absensi, pengaturan, dan konfigurasi sync sendiri (dipisah di `localStorage`).
-- Password **tidak** disimpan mentah: disimpan sebagai hash SHA-256 berulang dengan salt acak per akun.
-- Autentikasi berjalan sepenuhnya di sisi klien — cocok untuk penggunaan pribadi di perangkat sendiri.
-- Untuk pemakaian multi-perangkat yang aman, gunakan worker + Turso (token tidak terekspos ke browser).
-
-## Menjalankan lokal
+## Menjalankan lokal (frontend saja)
 
 ```bash
 python3 -m http.server 8080
 # buka http://localhost:8080
 ```
 
-Tanpa konfigurasi apa pun, aplikasi langsung berjalan dalam mode lokal (data di `localStorage`).
+Tanpa backend, aplikasi berjalan dalam mode lokal (data di `localStorage`).
 
-## Sinkronisasi Turso
+## Setup backend (Cloudflare Worker + Turso)
 
-1. Buat database dan terapkan skema:
+### 1. Buat database Turso dan terapkan skema
 
 ```bash
 turso db create absensi
 turso db shell absensi < schema.sql
 ```
 
-2. Deploy worker sinkronisasi:
+Catat URL database (`libsql://...`) dan auth token.
+
+### 2. Deploy worker
 
 ```bash
 cd worker
 npm install
-npx wrangler secret put TURSO_DATABASE_URL   # libsql://<db>-<org>.turso.io
-npx wrangler secret put TURSO_AUTH_TOKEN
-npx wrangler secret put SYNC_TOKEN           # token bebas, dipakai juga di web
+npx wrangler login                                   # sekali saja
+npx wrangler secret put TURSO_DATABASE_URL           # libsql://<db>-<org>.turso.io
+npx wrangler secret put TURSO_AUTH_TOKEN             # token Turso
 npx wrangler deploy
 ```
 
-3. Buka website → **Pengaturan** → isi `Endpoint Sync` (URL worker) dan `Sync Token`, lalu klik **Sync Turso**.
+Worker akan live di `https://absensi-api.<subdomain>.workers.dev`.
 
-Selama `Endpoint Sync` kosong, aplikasi tetap berjalan penuh secara lokal.
+### 3. Hubungkan frontend ke worker
+
+Buka https://pmuhammadagus-byte.github.io/absensi/
+
+1. Klik **Masuk** → tab **Daftar** untuk membuat akun pertama.
+2. Jika frontend belum tahu URL worker, klik **Pengaturan** → isi **Endpoint API** dengan URL worker (mis. `https://absensi-api.xxx.workers.dev`).
+3. Setelah daftar/login, data absensi & pengaturan otomatis tersimpan ke Turso dan dapat diakses dari perangkat lain dengan login akun yang sama.
+
+### 4. (Alternatif) Pakai parameter URL
+
+Buka situs dengan parameter `?api=<URL worker>`:
+
+```
+https://pmuhammadagus-byte.github.io/absensi/?api=https://absensi-api.xxx.workers.dev
+```
+
+URL worker akan disimpan otomatis dan dipakai pada kunjungan berikutnya.
 
 ## Struktur
 
 ```
 index.html      UI
 style.css       styling
-app.js          logika absensi, perhitungan, sync
-schema.sql      skema Turso/SQLite
-worker/         Cloudflare Worker untuk API sinkronisasi
+app.js          logika absensi + auth via worker
+schema.sql      skema Turso (users, records, pengaturan)
+worker/         Cloudflare Worker (register, login, records, settings)
 ```
 
-## Alternatif database
+## Keamanan
 
-| Database | Catatan |
-| --- | --- |
-| Turso / SQLite | dipakai — gratis, ringan, HTTP API |
-| Cloudflare D1 | naturan kalau worker sudah di Cloudflare |
-| Firebase Firestore | realtime, SDK mudah |
-| MongoDB Atlas | skema fleksibel, gratis 512MB |
-| Neon (Postgres) | serverless SQL, gratis tier |
+- Password **tidak** disimpan mentah: hash SHA-256 berulang (800×) + salt acak per user, disimpan di Turso.
+- Token Turso **tidak** terekspos ke browser; hanya ada di secrets Cloudflare Worker.
+- Setiap user mendapat `api_key` unik (dirotasi saat login) untuk akses datanya sendiri. Data per user terpisah.
+- Tanpa backend, aplikasi tetap berjalan penuh secara lokal.
 
 ## Lisensi
 

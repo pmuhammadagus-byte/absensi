@@ -248,7 +248,17 @@ export default {
               args: [user.id],
             },
           ]);
-          return json({ settings: rows[0] || null });
+          const s = rows[0];
+          return json({
+            settings: s
+              ? {
+                  nama: s.nama || '',
+                  jamMasukNormal: s.jam_masuk_normal || '08:00',
+                  jamPulangNormal: s.jam_pulang_normal || '17:00',
+                  tarifHarian: Number(s.tarif_harian || 0),
+                }
+              : null,
+          });
         }
 
         if (request.method === 'PUT') {
