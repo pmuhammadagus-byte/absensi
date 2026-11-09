@@ -134,9 +134,13 @@ function rekap(periode) {
   const hariEfektif = Math.max(1, Number(settings.hariEfektif) || 22);
   const JAM_NORMAL = Number(settings.jamNormalHarian) || 9;
   const tarifHarian = Number(settings.tarifHarian || 0);
-  const honorHarian = (Number(settings.gajiPokok) + Number(settings.tunjangan)) / hariEfektif;
+  const gajiPokok = Number(settings.gajiPokok) || 0;
+  const tunjangan = Number(settings.tunjangan) || 0;
+
+  // Upah harian: pakai tarif harian bila diisi, kalau tidak dari (gaji pokok + tunjangan) / hari efektif
+  const honorHarian = tarifHarian > 0 ? tarifHarian : (gajiPokok + tunjangan) / hariEfektif;
   const gajiHarian = honorHarian * hadir.length;
-  const tarifPerJam = tarifHarian / JAM_NORMAL;
+  const tarifPerJam = honorHarian / JAM_NORMAL;
   const upahLembur = totalLembur * tarifPerJam;
   const potonganTelat = totalTelatMenit * Number(settings.potonganMenit || 0);
   const gajiBersih = gajiHarian + upahLembur - potonganTelat;
@@ -178,10 +182,9 @@ function renderRekap() {
     : 'belum ada data pada periode ini';
 
   const rows = [
-    ['Honor harian', rupiah(r.honorHarian), ''],
-    [`Gaji harian × ${r.jumlahHadir} hari`, rupiah(r.gajiHarian), ''],
-    [`Tarif harian 9 jam`, rupiah(r.tarifHarian), ''],
-    [`Lembur ${angka(r.totalLembur)} jam × ${rupiah(r.tarifPerJam)}/jam`, '+ ' + rupiah(r.upahLembur), 'pos'],
+    [`Upah harian × ${r.jumlahHadir} hari`, rupiah(r.gajiHarian), ''],
+    [`Tarif per jam (harian ÷ 9 jam)`, rupiah(r.tarifPerJam), ''],
+    [`Lembur ${angka(r.totalLembur)} jam × ${rupiah(r.tarifPerJam)}`, '+ ' + rupiah(r.upahLembur), 'pos'],
     [`Potongan telat ${r.totalTelatMenit} menit`, '− ' + rupiah(r.potonganTelat), 'neg'],
   ];
 
