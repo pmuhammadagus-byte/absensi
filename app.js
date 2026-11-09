@@ -1,14 +1,78 @@
 // Absensi — kehadiran manual + lembur & gaji otomatis.
 // Data disimpan lokal (localStorage) dan dapat disinkronkan ke Turso via worker.
 
+const K_USERS = 'absensi.users.v1';
+const K_SESSION = 'absensi.session.v1';
+
+// Kunci data per-user (dipisah agar tiap akun punya absensi sendiri)
 const K_RECORDS = 'absensi.records.v1';
 const K_SETTINGS = 'absensi.settings.v1';
 const K_SYNC = 'absensi.sync.v1';
+
+let recordsKey = K_RECORDS;
+let settingsKey = K_SETTINGS;
+let syncKey = K_SYNC;
 
 const $ = (id) => document.getElementById(id);
 
 const rupiah = (n) => 'Rp ' + Math.round(Number(n) || 0).toLocaleString('id-ID');
 const angka = (n) => (Math.round(Number(n) * 100) / 100).toLocaleString('id-ID');
+
+/* ---------- auth (local, hash SHA-256 + salt) ---------- */
+
+let currentUser = null;
+
+const enc = new TextEncoder();
+
+function bytesToHex(buf) {
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function randomSalt() {
+  const b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  return bytesToHex(b.buffer);
+}
+
+async function hashPassword(password, salt) {
+  // iterasi ringan untuk memperlambat brute-force lokal
+  let digest = await crypto.subtle.digest('SHA-256', enc.encode(`${salt}:${password}`));
+  for (let i = 0; i < 800; i++) {
+    digest = await crypto.subtle.digest('SHA-256', digest);
+  }
+  return bytesToHex(digest);
+}
+
+function loadUsers() {
+  try {
+    const raw = localStorage.getItem(K_USERS);
+    const v = raw ? JSON.parse(raw) : {};
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveUsers(users) {
+  try {
+    localStorage.setItem(K_USERS, JSON.stringify(users));
+  } catch (e) {
+    console.warn('Gagal menyimpan pengguna', e);
+  }
+}
+
+function normUser(u) {
+  return String(u || '').trim().toLowerCase();
+}
+
+function setSession(username) {
+  if (username) localStorage.setItem(K_SESSION, username);
+  else localStorage.removeItem(K_SESSION);
+}
+
+function getSession() {
+  return localStorage.getItem(K_SESSION) || '';
+}
 
 /* ---------- toast ---------- */
 let toastTimer = null;
@@ -58,9 +122,16 @@ function save(key, value) {
   }
 }
 
-let settings = load(K_SETTINGS, DEFAULT_SETTINGS);
-let sync = load(K_SYNC, DEFAULT_SYNC);
-let records = loadArr(K_RECORDS);
+let settings = { ...DEFAULT_SETTINGS };
+let sync = { ...DEFAULT_SYNC };
+let records = [];
+
+/** Memuat data milik user aktif dari localStorage. */
+function muatDataUser() {
+  settings = load(settingsKey, DEFAULT_SETTINGS);
+  sync = load(syncKey, DEFAULT_SYNC);
+  records = loadArr(recordsKey);
+}
 
 /* ---------- util waktu ---------- */
 
@@ -217,7 +288,7 @@ function newId() {
 }
 
 function simpanLokal() {
-  save(K_RECORDS, records);
+  save(recordsKey, records);
 }
 
 function hapusRecord(id) {
@@ -403,11 +474,11 @@ function bacaSettingsDariForm() {
     tarifHarian: Number($('tarifHarian').value) || 0,
   };
   sync = { url: $('syncUrl').value.trim(), token: $('syncToken').value.trim() };
-  save(K_SETTINGS, settings);
-  save(K_SYNC, sync);
+  save(settingsKey, settings);
+  save(syncKey, sync);
 }
 
-function init() {
+function initApp() {
   isiFormDariSettings();
   resetForm();
   $('periode').value = todayStr().slice(0, 7);
@@ -487,4 +558,183 @@ function init() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', init);
+/* ---------- UI autentikasi ---------- */
+
+let authMode = 'login';
+
+function tampilkanErrorAuth(msg) {
+  $('authError').textContent = msg || '';
+}
+
+function setModeAuth(mode) {
+  authMode = mode;
+  const login = mode === 'login';
+  $('tabLogin').classList.toggle('active', login);
+  $('tabLogin').setAttribute('aria-selected', String(login));
+  $('tabDaftar').classList.toggle('active', !login);
+  $('tabDaftar').setAttribute('aria-selected', String(!login));
+  $('authTitle').textContent = login ? 'Masuk' : 'Daftar Akun';
+  $('authSub').textContent = login ? 'Kelola absensi pribadi Anda' : 'Buat akun baru untuk mulai mencatat';
+  $('fieldKonfirmasi').hidden = login;
+  $('btnSubmitAuth').textContent = login ? 'Masuk' : 'Daftar';
+  $('authPassword').setAttribute('autocomplete', login ? 'current-password' : 'new-password');
+  $('authPassword2').value = '';
+  tampilkanErrorAuth('');
+}
+
+function bukaModalAuth(mode = 'login') {
+  setModeAuth(mode);
+  $('authModal').hidden = false;
+  setTimeout(() => $('authUsername').focus(), 40);
+}
+
+function tutupModalAuth() {
+  $('authModal').hidden = true;
+  tampilkanErrorAuth('');
+}
+
+function terapkanSesi(username) {
+  currentUser = username;
+  const aktif = Boolean(username);
+
+  if (aktif) {
+    const safe = normUser(username).replace(/[^a-z0-9._-]/g, '_');
+    recordsKey = `${K_RECORDS}::${safe}`;
+    settingsKey = `${K_SETTINGS}::${safe}`;
+    syncKey = `${K_SYNC}::${safe}`;
+  } else {
+    recordsKey = K_RECORDS;
+    settingsKey = K_SETTINGS;
+    syncKey = K_SYNC;
+  }
+
+  muatDataUser();
+  isiFormDariSettings();
+  resetForm();
+  renderRekap();
+
+  $('userMenu').hidden = !aktif;
+  $('btnLoginTop').hidden = aktif;
+  if (aktif) {
+    $('userName').textContent = username;
+    $('userAvatar').textContent = username.slice(0, 1);
+    $('userDropdown').hidden = true;
+  }
+
+  setSyncState(syncEnabled() ? 'busy' : 'off', syncEnabled() ? 'menghubungkan' : 'lokal');
+  if (syncEnabled()) pullSync();
+}
+
+async function prosesAuth(e) {
+  e.preventDefault();
+  const username = $('authUsername').value.trim();
+  const password = $('authPassword').value;
+  const password2 = $('authPassword2').value;
+  const users = loadUsers();
+
+  if (!username) return tampilkanErrorAuth('Username wajib diisi.');
+  if (username.length < 3) return tampilkanErrorAuth('Username minimal 3 karakter.');
+  if (!/^[a-zA-Z0-9._-]+$/.test(username)) return tampilkanErrorAuth('Username hanya huruf, angka, titik, garis bawah, minus.');
+
+  const key = normUser(username);
+
+  if (!password) return tampilkanErrorAuth('Password wajib diisi.');
+  if (password.length < 6) return tampilkanErrorAuth('Password minimal 6 karakter.');
+
+  $('btnSubmitAuth').disabled = true;
+
+  try {
+    if (authMode === 'daftar') {
+      if (users[key]) return tampilkanErrorAuth('Username sudah terdaftar.');
+      if (password !== password2) return tampilkanErrorAuth('Konfirmasi password tidak sama.');
+
+      const salt = randomSalt();
+      const hash = await hashPassword(password, salt);
+      users[key] = { username, salt, hash, dibuat: new Date().toISOString() };
+      saveUsers(users);
+
+      setSession(username);
+      terapkanSesi(username);
+      tutupModalAuth();
+      toast(`Akun ${username} dibuat. Selamat datang!`, 'ok');
+    } else {
+      const u = users[key];
+      if (!u) return tampilkanErrorAuth('Username belum terdaftar.');
+      const hash = await hashPassword(password, u.salt);
+      if (hash !== u.hash) return tampilkanErrorAuth('Password salah.');
+
+      setSession(u.username);
+      terapkanSesi(u.username);
+      tutupModalAuth();
+      toast(`Selamat datang, ${u.username}`, 'ok');
+    }
+  } catch (err) {
+    console.error(err);
+    tampilkanErrorAuth('Terjadi kesalahan. Coba lagi.');
+  } finally {
+    $('btnSubmitAuth').disabled = false;
+  }
+}
+
+function keluar() {
+  if (!confirm('Keluar dari akun ini?')) return;
+  setSession('');
+  terapkanSesi('');
+  resetForm();
+  renderRekap();
+  $('userDropdown').hidden = true;
+  toast('Anda telah keluar');
+  bukaModalAuth('login');
+}
+
+function initAuth() {
+  setModeAuth('login');
+  $('tabLogin').addEventListener('click', () => setModeAuth('login'));
+  $('tabDaftar').addEventListener('click', () => setModeAuth('daftar'));
+  $('formAuth').addEventListener('submit', prosesAuth);
+  $('btnLoginTop').addEventListener('click', () => bukaModalAuth('login'));
+  $('btnLogout').addEventListener('click', keluar);
+
+  $('btnUser').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const dd = $('userDropdown');
+    dd.hidden = !dd.hidden;
+    $('btnUser').setAttribute('aria-expanded', String(!dd.hidden));
+  });
+
+  document.addEventListener('click', () => {
+    $('userDropdown').hidden = true;
+    $('btnUser').setAttribute('aria-expanded', 'false');
+  });
+
+  $('userDropdown').addEventListener('click', (e) => e.stopPropagation());
+
+  $('btnPwToggle').addEventListener('click', () => {
+    const el = $('authPassword');
+    el.type = el.type === 'password' ? 'text' : 'password';
+    $('btnPwToggle').textContent = el.type === 'password' ? '👁' : '🙈';
+  });
+
+  $('authModal').addEventListener('click', (e) => {
+    if (e.target === $('authModal') && currentUser) tutupModalAuth();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && currentUser) tutupModalAuth();
+  });
+}
+
+function boot() {
+  initApp();
+  initAuth();
+
+  const sesi = getSession();
+  if (sesi) {
+    terapkanSesi(sesi);
+  } else {
+    terapkanSesi('');
+    bukaModalAuth('login');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', boot);

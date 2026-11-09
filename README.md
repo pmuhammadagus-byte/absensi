@@ -6,6 +6,7 @@ Live: https://pmuhammadagus-byte.github.io/absensi/
 
 ## Fitur
 
+- **Login / daftar** dengan username & password (data per akun, password di-hash SHA-256 + salt).
 - Catat kehadiran: tanggal, jam datang, jam pulang, status (hadir/izin/sakit/cuti), catatan.
 - Tombol "Isi Jam Datang = Sekarang" / "Isi Jam Pulang = Sekarang" — tetap bisa diedit manual.
 - Perhitungan otomatis per periode (bulanan):
@@ -28,6 +29,13 @@ gaji_harian   = tarif_harian * jumlah_hari_hadir
 upah_lembur   = total_lembur_jam * tarif_per_jam
 gaji_bersih   = gaji_harian + upah_lembur
 ```
+
+## Akun & keamanan
+
+- Setiap akun punya data absensi, pengaturan, dan konfigurasi sync sendiri (dipisah di `localStorage`).
+- Password **tidak** disimpan mentah: disimpan sebagai hash SHA-256 berulang dengan salt acak per akun.
+- Autentikasi berjalan sepenuhnya di sisi klien — cocok untuk penggunaan pribadi di perangkat sendiri.
+- Untuk pemakaian multi-perangkat yang aman, gunakan worker + Turso (token tidak terekspos ke browser).
 
 ## Menjalankan lokal
 
