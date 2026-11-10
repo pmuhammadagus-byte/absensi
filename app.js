@@ -19,6 +19,7 @@ const angka = (n) => (Math.round(Number(n) * 100) / 100).toLocaleString('id-ID')
 let currentUser = null;
 
 
+
 /* ---------- auth (local, hash SHA-256 + salt) ---------- */
 
 const K_USERS = 'absensi.users.v1';
@@ -92,11 +93,6 @@ function bukaModalAuth(mode = 'login') {
 function tutupModalAuth() { $('authModal').hidden = true; tampilkanErrorAuth(''); }
 
 async function prosesAuth(e) {
-  console.log('>>> prosesAuth CALLED');
-  alert('prosesAuth dipanggil! cek console F12');
-
-  toast('Memproses...', '');
-
   e.preventDefault();
   const username = $('authUsername').value.trim();
   const password = $('authPassword').value;
@@ -144,7 +140,6 @@ async function prosesAuth(e) {
   }
 }
 
-
 function terapkanSesi(username) {
   currentUser = username || null;
   const aktif = Boolean(currentUser);
@@ -175,7 +170,6 @@ function terapkanSesi(username) {
     setSyncState('off', 'lokal');
   }
 }
-
 
 function keluar() {
   if (!confirm('Keluar dari akun ini?')) return;
@@ -223,19 +217,6 @@ function initAuth() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && currentUser) tutupModalAuth();
   });
-}
-
-function boot() {
-  initApp();
-  initAuth();
-
-  const sesi = getSesi();
-  if (sesi) {
-    terapkanSesi(sesi);
-  } else {
-    terapkanSesi('');
-    bukaModalAuth('login');
-  }
 }
 
 document.addEventListener('DOMContentLoaded', boot);
