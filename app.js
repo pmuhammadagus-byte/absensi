@@ -139,6 +139,39 @@ async function prosesAuth(e) {
   }
 }
 
+
+function terapkanSesi(username) {
+  currentUser = username || null;
+  const aktif = Boolean(currentUser);
+
+  if (aktif) {
+    const safe = normUser(username).replace(/[^a-z0-9._-]/g, '_');
+    recordsKey = K_RECORDS + '::' + safe;
+    settingsKey = K_SETTINGS + '::' + safe;
+  } else {
+    recordsKey = K_RECORDS;
+    settingsKey = K_SETTINGS;
+  }
+
+  muatDataUser();
+  isiFormDariSettings();
+  resetForm();
+  renderRekap();
+
+  $('userMenu').hidden = !aktif;
+  $('btnLoginTop').hidden = aktif;
+  if (aktif) {
+    $('userName').textContent = currentUser;
+    $('userAvatar').textContent = currentUser.slice(0, 1);
+    $('userDropdown').hidden = true;
+    setSyncState('busy', 'menyinkron');
+    pullFromTurso();
+  } else {
+    setSyncState('off', 'lokal');
+  }
+}
+
+
 function keluar() {
   if (!confirm('Keluar dari akun ini?')) return;
   simpanSesi('');
