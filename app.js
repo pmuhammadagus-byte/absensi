@@ -17,6 +17,7 @@ const angka = (n) => (Math.round(Number(n) * 100) / 100).toLocaleString('id-ID')
 /* ---------- auth (local, hash SHA-256 + salt) ---------- */
 
 let currentUser = null;
+let authMode = "login";
 
 
 
@@ -93,6 +94,7 @@ function bukaModalAuth(mode = 'login') {
 function tutupModalAuth() { $('authModal').hidden = true; tampilkanErrorAuth(''); }
 
 async function prosesAuth(e) {
+  console.log("prosesAuth triggered, mode:", authMode);
   e.preventDefault();
   const username = $('authUsername').value.trim();
   const password = $('authPassword').value;
@@ -290,6 +292,7 @@ function initApp() {
 }
 
 function boot() {
+  console.log("App booting...");
   initApp();
   initAuth();
 
