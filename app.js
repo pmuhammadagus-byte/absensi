@@ -18,6 +18,138 @@ const angka = (n) => (Math.round(Number(n) * 100) / 100).toLocaleString('id-ID')
 
 let currentUser = null;
 
+
+/* ---------- auth (local, hash SHA-256 + salt) ---------- */
+
+const K_USERS = 'absensi.users.v1';
+const K_SESSION = 'absensi.session.v1';
+
+const enc = new TextEncoder();
+
+function bytesToHex(buf) {
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function randomSalt() {
+  const b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  return bytesToHex(b.buffer);
+}
+
+async function hashPassword(password, salt) {
+  let digest = await crypto.subtle.digest('SHA-256', enc.encode(salt + ':' + password));
+  for (let i = 0; i < 800; i++) {
+    digest = await crypto.subtle.digest('SHA-256', digest);
+  }
+  return bytesToHex(digest);
+}
+
+function loadUsers() {
+  try {
+    const raw = localStorage.getItem('absensi.users.v1');
+    const v = raw ? JSON.parse(raw) : {};
+    return v && typeof v === 'object' ? v : {};
+  } catch { return {}; }
+}
+
+function saveUsers(users) {
+  try { localStorage.setItem('absensi.users.v1', JSON.stringify(users)); } catch (e) { console.warn('Gagal simpan users', e); }
+}
+
+function normUser(u) { return String(u || '').trim().toLowerCase(); }
+
+function simpanSesi(username) {
+  if (username) localStorage.setItem('absensi.session.v1', username);
+  else localStorage.removeItem('absensi.session.v1');
+}
+
+function getSesi() { return localStorage.getItem('absensi.session.v1') || ''; }
+
+function tampilkanErrorAuth(msg) { $('authError').textContent = msg || ''; }
+
+function setModeAuth(mode) {
+  authMode = mode;
+  const login = mode === 'login';
+  $('tabLogin').classList.toggle('active', login);
+  $('tabLogin').setAttribute('aria-selected', String(login));
+  $('tabDaftar').classList.toggle('active', !login);
+  $('tabDaftar').setAttribute('aria-selected', String(!login));
+  $('authTitle').textContent = login ? 'Masuk' : 'Daftar Akun';
+  $('authSub').textContent = login ? 'Kelola absensi pribadi Anda' : 'Buat akun baru untuk mulai mencatat';
+  $('fieldKonfirmasi').hidden = login;
+  $('btnSubmitAuth').textContent = login ? 'Masuk' : 'Daftar';
+  $('authPassword').setAttribute('autocomplete', login ? 'current-password' : 'new-password');
+  $('authPassword2').value = '';
+  tampilkanErrorAuth('');
+}
+
+function bukaModalAuth(mode = 'login') {
+  setModeAuth(mode);
+  $('authModal').hidden = false;
+  setTimeout(() => $('authUsername').focus(), 40);
+}
+
+function tutupModalAuth() { $('authModal').hidden = true; tampilkanErrorAuth(''); }
+
+async function prosesAuth(e) {
+  e.preventDefault();
+  const username = $('authUsername').value.trim();
+  const password = $('authPassword').value;
+  const password2 = $('authPassword2').value;
+  const users = loadUsers();
+
+  if (!username) return tampilkanErrorAuth('Username wajib diisi.');
+  if (username.length < 3) return tampilkanErrorAuth('Username minimal 3 karakter.');
+  if (!/^[a-zA-Z0-9._-]+/.test(username)) return tampilkanErrorAuth('Username hanya huruf, angka, titik, _, -.');
+  if (!password) return tampilkanErrorAuth('Password wajib diisi.');
+  if (password.length < 6) return tampilkanErrorAuth('Password minimal 6 karakter.');
+  if (authMode === 'daftar' && password !== password2) return tampilkanErrorAuth('Konfirmasi password tidak sama.');
+
+  $('btnSubmitAuth').disabled = true;
+  tampilkanErrorAuth('');
+
+  try {
+    const key = normUser(username);
+
+    if (authMode === 'daftar') {
+      if (users[key]) return tampilkanErrorAuth('Username sudah terdaftar.');
+      const salt = randomSalt();
+      const hash = await hashPassword(password, salt);
+      users[key] = { username, salt, hash, dibuat: new Date().toISOString() };
+      saveUsers(users);
+      simpanSesi(username);
+      terapkanSesi(username);
+      tutupModalAuth();
+      toast('Akun ' + username + ' dibuat. Selamat datang!', 'ok');
+    } else {
+      const u = users[key];
+      if (!u) return tampilkanErrorAuth('Username belum terdaftar.');
+      const hash = await hashPassword(password, u.salt);
+      if (hash !== u.hash) return tampilkanErrorAuth('Password salah.');
+      simpanSesi(username);
+      terapkanSesi(username);
+      tutupModalAuth();
+      toast('Selamat datang, ' + username, 'ok');
+    }
+  } catch (err) {
+    console.warn(err);
+    tampilkanErrorAuth('Terjadi kesalahan. Coba lagi.');
+  } finally {
+    $('btnSubmitAuth').disabled = false;
+  }
+}
+
+function keluar() {
+  if (!confirm('Keluar dari akun ini?')) return;
+  simpanSesi('');
+  terapkanSesi('');
+  resetForm();
+  renderRekap();
+  $('userDropdown').hidden = true;
+  toast('Anda telah keluar');
+  bukaModalAuth('login');
+}
+
 function initAuth() {
   setModeAuth('login');
   $('tabLogin').addEventListener('click', () => setModeAuth('login'));
