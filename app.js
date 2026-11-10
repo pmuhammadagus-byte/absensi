@@ -219,4 +219,88 @@ function initAuth() {
   });
 }
 
+
+
+function initApp() {
+  isiFormDariSettings();
+  resetForm();
+  $('periode').value = todayStr().slice(0, 7);
+
+  const tgl = new Date();
+  $('todayLabel').textContent = tgl.toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'short',
+  });
+
+  renderRekap();
+  setSyncState('off', 'lokal');
+
+  const jamSekarang = () => {
+    const t = nowHHMM();
+    $('nowMasuk').textContent = t;
+    $('nowPulang').textContent = t;
+  };
+  jamSekarang();
+  setInterval(jamSekarang, 20000);
+
+  $('btnMasuk').addEventListener('click', () => {
+    $('jamDatang').value = nowHHMM();
+    toast('Jam datang diisi ' + $('jamDatang').value);
+  });
+  $('btnPulang').addEventListener('click', () => {
+    $('jamPulang').value = nowHHMM();
+    toast('Jam pulang diisi ' + $('jamPulang').value);
+  });
+  $('btnTambah').addEventListener('click', simpanAbsensi);
+  $('btnBatal').addEventListener('click', resetForm);
+  $('btnExport').addEventListener('click', exportCsv);
+  $('periode').addEventListener('change', renderRekap);
+
+  const bukaPengaturan = (buka) => {
+    const card = $('cardPengaturan');
+    card.hidden = buka === undefined ? !card.hidden : !buka;
+    if (!card.hidden) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  $('btnPengaturan').addEventListener('click', () => bukaPengaturan());
+  $('btnTutupPengaturan').addEventListener('click', () => {
+    bacaSettingsDariForm();
+    renderRekap();
+    bukaPengaturan(false);
+  });
+
+  ['nama', 'jamMasukNormal', 'jamPulangNormal', 'tarifHarian'].forEach(
+    (id) => $(id).addEventListener('change', () => {
+      bacaSettingsDariForm();
+      renderRekap();
+    })
+  );
+
+  $('btnSync').addEventListener('click', async () => {
+    bacaSettingsDariForm();
+    if (!currentUser) {
+      toast('Login terlebih dahulu.', 'err');
+      return;
+    }
+    await pullFromTurso();
+    await pushToTurso();
+    toast('Sinkronisasi selesai', 'ok');
+  });
+}
+
+function boot() {
+  initApp();
+  initAuth();
+
+  const sesi = getSesi();
+  if (sesi) {
+    terapkanSesi(sesi);
+  } else {
+    terapkanSesi('');
+    bukaModalAuth('login');
+  }
+}
+
+
 document.addEventListener('DOMContentLoaded', boot);
