@@ -19,60 +19,10 @@
   </div>
   <div class="appbar-actions">
     <span id="syncState" class="chip chip-off" title="Status sinkronisasi">lokal</span>
-    <div class="user-menu" id="userMenu" hidden>
-      <button id="btnUser" class="btn btn-ghost user-btn" type="button" aria-haspopup="true" aria-expanded="false">
-        <span class="avatar" id="userAvatar">U</span>
-        <span class="user-name" id="userName">user</span>
-      </button>
-      <div class="user-dropdown" id="userDropdown" hidden>
-        <button id="btnLogout" class="dropdown-item" type="button">Keluar</button>
-      </div>
-    </div>
-    <button id="btnLoginTop" class="btn btn-primary" type="button">Masuk</button>
     <button id="btnSync" class="btn btn-ghost" type="button">Sync</button>
     <button id="btnPengaturan" class="btn btn-ghost" type="button">Pengaturan</button>
   </div>
 </header>
-
-<!-- ===== Auth modal ===== -->
-<div class="modal-backdrop" id="authModal" hidden>
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
-    <div class="modal-brand">
-      <div class="brand-mark">A</div>
-      <div>
-        <h2 id="authTitle">Masuk</h2>
-        <p id="authSub">Kelola absensi pribadi Anda</p>
-      </div>
-    </div>
-
-    <div class="tabs" role="tablist">
-      <button class="tab active" id="tabLogin" type="button" role="tab" aria-selected="true">Masuk</button>
-      <button class="tab" id="tabDaftar" type="button" role="tab" aria-selected="false">Daftar</button>
-    </div>
-
-    <form id="formAuth" autocomplete="on" novalidate>
-      <label class="field">Username
-        <input id="authUsername" type="text" placeholder="mis. budi" autocomplete="username" required />
-      </label>
-      <label class="field">Password
-        <div class="pw-wrap">
-          <input id="authPassword" type="password" placeholder="minimal 6 karakter" autocomplete="current-password" required />
-          <button class="pw-toggle" id="btnPwToggle" type="button" aria-label="Tampilkan password">👁</button>
-        </div>
-      </label>
-      <label class="field" id="fieldKonfirmasi" hidden>Ulangi Password
-        <input id="authPassword2" type="password" placeholder="ulangi password" autocomplete="new-password" />
-      </label>
-
-      <p class="auth-error" id="authError" role="alert"></p>
-
-      <button class="btn btn-primary btn-block" id="btnSubmitAuth" type="submit">Masuk</button>
-      <p class="auth-note">
-        Data absensi tersimpan di perangkat ini, terpisah untuk setiap akun.
-      </p>
-    </form>
-  </div>
-</div>
 
 <main class="layout" id="appMain">
 
