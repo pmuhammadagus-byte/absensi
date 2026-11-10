@@ -92,6 +92,11 @@ function bukaModalAuth(mode = 'login') {
 function tutupModalAuth() { $('authModal').hidden = true; tampilkanErrorAuth(''); }
 
 async function prosesAuth(e) {
+  console.log('>>> prosesAuth CALLED');
+  alert('prosesAuth dipanggil! cek console F12');
+
+  toast('Memproses...', '');
+
   e.preventDefault();
   const username = $('authUsername').value.trim();
   const password = $('authPassword').value;
