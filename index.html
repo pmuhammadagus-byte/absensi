@@ -1,196 +1,66 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="theme-color" content="#f6f7fb" />
-<title>Absensi — Kehadiran, Lembur &amp; Gaji</title>
-<link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kalkulator Gaji & Lembur</title>
+  <style>
+    :root { --bg: #f8fafc; --card: #ffffff; --primary: #2563eb; --text: #1e293b; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; padding: 20px; margin: 0; }
+    .card { background: var(--card); padding: 24px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+    h1 { font-size: 1.25rem; margin: 0 0 20px; text-align: center; }
+    .field { margin-bottom: 16px; }
+    label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 4px; }
+    input { width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
+    .res { margin-top: 24px; padding-top: 20px; border-top: 1px solid #e2e8f0; }
+    .row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.95rem; }
+    .total { font-weight: 700; font-size: 1.1rem; color: var(--primary); margin-top: 12px; }
+  </style>
 </head>
 <body>
-
-<header class="appbar">
-  <div class="brand">
-    <div class="brand-mark">A</div>
-    <div class="brand-text">
-      <h1>Absensi</h1>
-      <p>Kehadiran, lembur & gaji otomatis</p>
+  <div class="card">
+    <h1>Kalkulator Gaji</h1>
+    <div class="field">
+      <label>Tarif Harian (Rp)</label>
+      <input type="number" id="tarif" value="200000" oninput="calc()">
     </div>
-  </div>
-  <div class="appbar-actions">
-    <span id="syncState" class="chip chip-off" title="Status sinkronisasi">lokal</span>
-    <span id="userBadge" class="chip chip-off" title="Status akun">Lokal</span>
-    <button id="btnSync" class="btn btn-ghost" type="button">Sync</button>
-    <button id="btnAuthModal" class="btn btn-ghost" type="button">Masuk / Daftar</button>
-    <button id="btnPengaturan" class="btn btn-ghost" type="button">Pengaturan</button>
-  </div>
-</header>
-
-<main class="layout" id="appMain">
-
-  <!-- Kolom kiri: input -->
-  <div class="col">
-
-    <section class="card" id="cardPengaturan" hidden>
-      <div class="card-head">
-        <h2>Pengaturan</h2>
-        <button id="btnTutupPengaturan" class="btn btn-icon" type="button" aria-label="Tutup">✕</button>
-      </div>
-      <div class="grid">
-        <label class="field">Endpoint API (Worker URL)
-          <input id="apiBaseInput" type="url" placeholder="https://absensi-api.xxx.workers.dev" />
-        </label>
-        <label class="field">Nama Karyawan
-          <input id="nama" type="text" placeholder="Nama karyawan" />
-        </label>
-        <label class="field">Jam Masuk Normal
-          <input id="jamMasukNormal" type="time" value="08:00" />
-        </label>
-        <label class="field">Jam Pulang Normal
-          <input id="jamPulangNormal" type="time" value="17:00" />
-        </label>
-        <label class="field">Tarif Harian (9 jam normal)
-          <input id="tarifHarian" type="number" min="0" step="1000" value="0" />
-        </label>
-</div>
-
-    </section>
-
-    <section class="card card-accent">
-      <div class="card-head">
-        <h2>Catat Kehadiran</h2>
-        <span class="chip chip-soft" id="todayLabel"></span>
-      </div>
-
-      <div class="quick">
-        <button id="btnMasuk" class="btn btn-quick" type="button">
-          <span class="q-ico">→</span>
-          <span class="q-txt"><strong>Datang sekarang</strong><small id="nowMasuk">--:--</small></span>
-        </button>
-        <button id="btnPulang" class="btn btn-quick" type="button">
-          <span class="q-ico">←</span>
-          <span class="q-txt"><strong>Pulang sekarang</strong><small id="nowPulang">--:--</small></span>
-        </button>
-      </div>
-
-      <div class="grid">
-        <label class="field">Tanggal
-          <input id="tanggal" type="date" />
-        </label>
-        <label class="field">Jam Datang
-          <input id="jamDatang" type="time" />
-        </label>
-        <label class="field">Jam Pulang
-          <input id="jamPulang" type="time" />
-        </label>
-        <label class="field">Status
-          <select id="status">
-            <option value="hadir">Hadir</option>
-            <option value="izin">Izin</option>
-            <option value="sakit">Sakit</option>
-            <option value="cuti">Cuti</option>
-          </select>
-        </label>
-        <label class="field field-wide">Catatan
-          <input id="catatan" type="text" placeholder="opsional" />
-        </label>
-      </div>
-
-      <div class="form-actions">
-        <button id="btnTambah" class="btn btn-primary" type="button">Simpan Absensi</button>
-        <button id="btnBatal" class="btn btn-ghost" type="button" hidden>Batal edit</button>
-      </div>
-    </section>
-  </div>
-
-  <!-- Kolom kanan: rekap -->
-  <div class="col">
-    <section class="card">
-      <div class="card-head">
-        <h2>Rekap</h2>
-        <input id="periode" type="month" class="month-input" />
-      </div>
-
-      <div class="hero-stat">
-        <span>Gaji Bersih</span>
-        <strong id="rGaji">Rp 0</strong>
-        <em id="heroSub">belum ada data</em>
-      </div>
-
-      <div class="stats">
-        <div class="stat"><span>Hadir</span><strong id="rHadir">0</strong><small>hari</small></div>
-        <div class="stat"><span>Jam Kerja</span><strong id="rJam">0</strong><small>jam</small></div>
-        <div class="stat"><span>Lembur</span><strong id="rLembur">0</strong><small>jam</small></div>
-      </div>
-
-      <ul class="breakdown" id="breakdown"></ul>
-    </section>
-  </div>
-
-  <!-- Tabel penuh -->
-  <section class="card card-table">
-    <div class="card-head">
-      <h2>Daftar Absensi</h2>
-      <div class="head-actions">
-        <span class="chip chip-soft" id="countLabel">0 entri</span>
-        <button id="btnExport" class="btn btn-ghost" type="button">Export CSV</button>
-      </div>
+    <div class="field">
+      <label>Jam Datang</label>
+      <input type="time" id="masuk" value="08:00" oninput="calc()">
     </div>
-    <div class="table-wrap">
-      <table id="tabelAbsen">
-        <thead>
-          <tr>
-            <th>Tanggal</th>
-            <th>Datang</th>
-            <th>Pulang</th>
-            <th>Kerja</th>
-            <th>Lembur</th>
-            <th>Status</th>
-            <th>Catatan</th>
-            <th class="th-aksi">Aksi</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+    <div class="field">
+      <label>Jam Pulang</label>
+      <input type="time" id="pulang" value="18:00" oninput="calc()">
     </div>
-    <div id="emptyAbsen" class="empty">
-      <div class="empty-ico">🗓️</div>
-      <p>Belum ada absensi di periode ini.</p>
-      <small>Isi jam datang &amp; pulang di form Catat Kehadiran.</small>
-    </div>
-  </section>
-</main>
-
-<footer class="foot">
-  <span>Absensi &middot; data lokal + sinkronisasi Turso opsional</span>
-</footer>
-
-<!-- Auth Modal (Login / Register) -->
-<section class="card" id="cardAuth" hidden style="position:fixed;top:10%;left:50%;transform:translateX(-50%);z-index:100;width:90%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.15)">
-  <div class="card-head">
-    <h2 id="authTitle">Masuk Akun</h2>
-    <button id="btnTutupAuth" class="btn btn-icon" type="button" aria-label="Tutup">✕</button>
+    <div class="res" id="out"></div>
   </div>
-  <div class="auth-tabs" style="display:flex;border-bottom:1px solid var(--border)">
-    <button id="tabLogin" class="btn btn-ghost active" type="button" style="flex:1">Masuk</button>
-    <button id="tabRegister" class="btn btn-ghost" type="button" style="flex:1">Daftar</button>
-  </div>
-  <div class="grid" style="padding:12px">
-    <label class="field">Username
-      <input id="authUser" type="text" placeholder="username" autocomplete="username" />
-    </label>
-    <label class="field">Password
-      <input id="authPass" type="password" placeholder="password" autocomplete="current-password" />
-    </label>
-  </div>
-  <div style="padding:12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
-    <button id="btnTutupAuth2" class="btn btn-ghost" type="button">Batal</button>
-    <button id="btnSubmitAuth" class="btn btn-primary" type="button">Masuk</button>
-  </div>
-</section>
+  <script>
+    function calc() {
+      const tarif = Number(document.getElementById("tarif").value) || 0;
+      const mVal = document.getElementById("masuk").value;
+      const pVal = document.getElementById("pulang").value;
+      if (!mVal || !pVal) return;
+      const [h1, m1] = mVal.split(":").map(Number);
+      const [h2, m2] = pVal.split(":").map(Number);
+      
+      let durasi = (h2 * 60 + m2) - (h1 * 60 + m1);
+      if (durasi < 0) durasi += 24 * 60;
+      
+      const jamKerja = durasi / 60;
+      const lembur = Math.max(0, jamKerja - 9);
+      const upahLembur = lembur * (tarif / 9);
+      const total = tarif + upahLembur;
 
-<div id="toast" class="toast" role="status" aria-live="polite"></div>
-
-<script src="app.js"></script>
+      const fmt = (n) => "Rp " + Math.round(n).toLocaleString("id-ID");
+      document.getElementById("out").innerHTML = `
+        <div class="row"><span>Total Jam Kerja</span><span>\${jamKerja.toFixed(2)} jam</span></div>
+        <div class="row"><span>Lembur (di atas 9j)</span><span>\${lembur.toFixed(2)} jam</span></div>
+        <div class="row"><span>Gaji Pokok</span><span>\${fmt(tarif)}</span></div>
+        <div class="row"><span>Upah Lembur</span><span>\${fmt(upahLembur)}</span></div>
+        <div class="row total"><span>Total Gaji Hari Ini</span><span>\${fmt(total)}</span></div>
+      `;
+    }
+    calc();
+  </script>
 </body>
 </html>
