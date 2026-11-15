@@ -53,12 +53,12 @@
       const total = tarif + upahLembur;
 
       const fmt = (n) => "Rp " + Math.round(n).toLocaleString("id-ID");
-      document.getElementById("out").innerHTML = `
-        <div class="row"><span>Total Jam Kerja</span><span>\${jamKerja.toFixed(2)} jam</span></div>
-        <div class="row"><span>Lembur (di atas 9j)</span><span>\${lembur.toFixed(2)} jam</span></div>
-        <div class="row"><span>Gaji Pokok</span><span>\${fmt(tarif)}</span></div>
-        <div class="row"><span>Upah Lembur</span><span>\${fmt(upahLembur)}</span></div>
-        <div class="row total"><span>Total Gaji Hari Ini</span><span>\${fmt(total)}</span></div>
+      document.getElementById('out').innerHTML = `
+        <div class="row"><span>Total Jam Kerja</span><span>${jamKerja.toFixed(2)} jam</span></div>
+        <div class="row"><span>Lembur (di atas 9j)</span><span>${lembur.toFixed(2)} jam</span></div>
+        <div class="row"><span>Gaji Pokok</span><span>${fmt(tarif)}</span></div>
+        <div class="row"><span>Upah Lembur</span><span>${fmt(upahLembur)}</span></div>
+        <div class="row total"><span>Total Gaji Hari Ini</span><span>${fmt(total)}</span></div>
       `;
     }
     calc();
