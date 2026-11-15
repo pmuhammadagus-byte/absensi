@@ -1,8 +1,9 @@
 // Absensi — kehadiran manual + lembur & gaji otomatis.
-// Data disimpan lokal (localStorage) + sinkronisasi langsung ke Turso (HTTP API).
+// Data disimpan lokal (localStorage) + sinkronisasi ke Cloudflare Worker + Turso.
 
 const K_RECORDS = 'absensi.records.v1';
 const K_SETTINGS = 'absensi.settings.v1';
+const K_AUTH = 'absensi.auth.v1'; // { apiKey, username }
 
 const $ = (id) => document.getElementById(id);
 
@@ -19,6 +20,7 @@ let settings = {
   jamNormalHarian: 9,
 };
 let records = [];
+let auth = { apiKey: null, username: null };
 
 const DEFAULT_SETTINGS = { ...settings };
 
@@ -55,59 +57,125 @@ function save(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { console.warn('Gagal simpan', key, e); }
 }
 
-/* ---------- Turso HTTP API ---------- */
+/* ---------- Worker API ---------- */
 
-const TURSO_URL = 'https://opencode-cakagus.aws-us-east-1.turso.io/v2/pipeline';
-const TURSO_TOKEN = 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTQyMzM5MDYsImlkIjoiMDFhMWMwYTMtM2QwMS03ZTQzLWFhYmMtNTIyNjA5Y2JiODA2Iiwia2lkIjoicXBBWGQyamhjRmZzdzN3SEE2WEY1VnlEakJKOXlvS0NmTW44Q2hYbUxySSIsInJpZCI6ImNmMmI3MjkxLWY0NDktNGJmZi04NGNlLWQ4ODdkM2M2NjA0NCJ9.AMKZhnDuPGo4rP76yXaPiSqtjU9zz-kXswkvlN5PeFQJofooTsebtrtRzDE9sYur1JdFYdZFiBO2GfQmBjUuAQ';
-const USER_ID = 'default_user';
-
-async function tursoExecute(sql, args = []) {
-  const res = await fetch(TURSO_URL, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${TURSO_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      requests: [{
-        type: 'execute',
-        stmt: {
-          sql,
-          args: args.map(v => v === null || v === undefined ? { type: 'null' } : typeof v === 'number' ? { type: 'integer', value: String(Math.trunc(v)) } : { type: 'text', value: String(v) })
-        }
-      }]
-    })
-  });
-  if (!res.ok) throw new Error(`Turso HTTP ${res.status}`);
-  const body = await res.json();
-  const r = body.results?.[0];
-  if (r?.type === 'error') throw new Error(r.error?.message || 'turso error');
-  const rows = r?.response?.result?.rows || [];
-  const cols = (r?.response?.result?.cols || []).map(c => c.name);
-  return rows.map(row => {
-    const obj = {};
-    row.forEach((cell, i) => { obj[cols[i]] = cell.type === 'null' ? null : cell.value; });
-    return obj;
-  });
+function getApiBase() {
+  const url = localStorage.getItem('absensi.apiBase');
+  return url || '';
+}
+function setApiBase(url) {
+  localStorage.setItem('absensi.apiBase', url);
 }
 
-async function tursoPipeline(statements) {
-  const res = await fetch(TURSO_URL, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${TURSO_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      requests: statements.map(s => ({
-        type: 'execute',
-        stmt: {
-          sql: s.sql,
-          args: (s.args || []).map(v => v === null || v === undefined ? { type: 'null' } : typeof v === 'number' ? { type: 'integer', value: String(Math.trunc(v)) } : { type: 'text', value: String(v) })
-        }
-      }))
-    })
-  });
-  if (!res.ok) throw new Error(`Turso HTTP ${res.status}`);
-  const body = await res.json();
-  return body.results || [];
+async function apiFetch(path, options = {}) {
+  const base = getApiBase();
+  if (!base) throw new Error('Endpoint API belum disetel. Buka Pengaturan → isi Endpoint API.');
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (auth.apiKey) headers['Authorization'] = `Bearer ${auth.apiKey}`;
+  const res = await fetch(base.replace(/\/$/, '') + path, { ...options, headers });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
 }
 
-/* ---------- sync ---------- */
+async function checkAuth() {
+  const saved = load(K_AUTH, { apiKey: null, username: null });
+  if (saved.apiKey) {
+    auth = saved;
+    try {
+      // Validasi key dengan memanggil endpoint yang butuh auth
+      await apiFetch('/api/settings', { method: 'GET' });
+      return true;
+    } catch {
+      auth = { apiKey: null, username: null };
+      save(K_AUTH, auth);
+    }
+  }
+  return false;
+}
+
+async function doRegister(username, password) {
+  const data = await apiFetch('/api/register', {
+    method: 'POST',
+    body: JSON.stringify({ username, password })
+  });
+  auth = { apiKey: data.api_key, username: data.username };
+  save(K_AUTH, auth);
+  return data;
+}
+
+async function doLogin(username, password) {
+  const data = await apiFetch('/api/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password })
+  });
+  auth = { apiKey: data.api_key, username: data.username };
+  save(K_AUTH, auth);
+  return data;
+}
+
+function doLogout() {
+  auth = { apiKey: null, username: null };
+  save(K_AUTH, auth);
+  records = [];
+  settings = { ...DEFAULT_SETTINGS };
+  save(K_RECORDS, records);
+  save(K_SETTINGS, settings);
+  renderRekap();
+  showAuthModal();
+}
+
+async function pullFromWorker() {
+  if (!auth.apiKey) return;
+  setSyncState('busy', 'menyinkron');
+  try {
+    const [recData, setData] = await Promise.all([
+      apiFetch('/api/records', { method: 'GET' }),
+      apiFetch('/api/settings', { method: 'GET' })
+    ]);
+    records = (recData.records || []).map(r => ({
+      id: r.id, tanggal: r.tanggal, jamDatang: r.jamDatang || '', jamPulang: r.jamPulang || '',
+      status: r.status || 'hadir', catatan: r.catatan || ''
+    }));
+    save(K_RECORDS, records);
+    if (setData.settings) {
+      const s = setData.settings;
+      settings = { ...DEFAULT_SETTINGS, nama: s.nama || '', jamMasukNormal: s.jamMasukNormal || '08:00', jamPulangNormal: s.jamPulangNormal || '17:00', tarifHarian: Number(s.tarifHarian || 0) };
+      save(K_SETTINGS, settings);
+      isiFormDariSettings();
+    }
+    renderRekap();
+    setSyncState('on', 'tersinkron');
+    updateUserBadge();
+  } catch (err) { console.warn(err); setSyncState('err', 'gagal'); }
+}
+
+let pushTimer = null;
+function pushToWorker() {
+  if (!auth.apiKey) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    setSyncState('busy', 'mengirim');
+    try {
+      await apiFetch('/api/records', {
+        method: 'PUT',
+        body: JSON.stringify({ records })
+      });
+      await apiFetch('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ settings: {
+          nama: settings.nama || '',
+          jamMasukNormal: settings.jamMasukNormal || '08:00',
+          jamPulangNormal: settings.jamPulangNormal || '17:00',
+          tarifHarian: Number(settings.tarifHarian || 0)
+        }})
+      });
+      setSyncState('on', 'tersinkron');
+    } catch (err) { console.warn(err); setSyncState('err', 'gagal'); }
+  }, 800);
+}
+
+/* ---------- sync (wrapper) ---------- */
 
 function setSyncState(state, text) {
   const el = $('syncState');
@@ -117,45 +185,11 @@ function setSyncState(state, text) {
   el.textContent = text;
 }
 
-async function pullFromTurso() {
-  setSyncState('busy', 'menyinkron');
-  try {
-    const [recRows, setRows] = await Promise.all([
-      tursoExecute(`SELECT id, tanggal, jam_datang, jam_pulang, status, catatan FROM records WHERE user_id = ? ORDER BY tanggal ASC`, [USER_ID]),
-      tursoExecute(`SELECT nama, jam_masuk_normal, jam_pulang_normal, tarif_harian FROM pengaturan WHERE user_id = ? LIMIT 1`, [USER_ID])
-    ]);
-    records = recRows.map(r => ({ id: r.id, tanggal: r.tanggal, jamDatang: r.jam_datang || '', jamPulang: r.jam_pulang || '', status: r.status || 'hadir', catatan: r.catatan || '' }));
-    save(K_RECORDS, records);
-    if (setRows.length) {
-      const s = setRows[0];
-      settings = { ...DEFAULT_SETTINGS, nama: s.nama || '', jamMasukNormal: s.jam_masuk_normal || '08:00', jamPulangNormal: s.jam_pulang_normal || '17:00', tarifHarian: Number(s.tarif_harian || 0) };
-      save(K_SETTINGS, settings);
-      isiFormDariSettings();
-    }
-    renderRekap();
-    setSyncState('on', 'tersinkron');
-  } catch (err) { console.warn(err); setSyncState('err', 'gagal'); }
-}
-
-let pushTimer = null;
-function pushToTurso() {
-  clearTimeout(pushTimer);
-  pushTimer = setTimeout(async () => {
-    setSyncState('busy', 'mengirim');
-    try {
-      const statements = [{ sql: 'DELETE FROM records WHERE user_id = ?', args: [USER_ID] }];
-      for (const r of records) {
-        if (!r.id || !r.tanggal) continue;
-        statements.push({ sql: `INSERT INTO records (id, user_id, tanggal, jam_datang, jam_pulang, status, catatan, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`, args: [r.id, USER_ID, r.tanggal, r.jamDatang || null, r.jamPulang || null, r.status || 'hadir', r.catatan || null] });
-      }
-      statements.push({
-        sql: `INSERT INTO pengaturan (user_id, nama, jam_masuk_normal, jam_pulang_normal, tarif_harian, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now')) ON CONFLICT(user_id) DO UPDATE SET nama=excluded.nama, jam_masuk_normal=excluded.jam_masuk_normal, jam_pulang_normal=excluded.jam_pulang_normal, tarif_harian=excluded.tarif_harian, updated_at=datetime('now')`,
-        args: [USER_ID, settings.nama || '', settings.jamMasukNormal || '08:00', settings.jamPulangNormal || '17:00', Number(settings.tarifHarian || 0)]
-      });
-      await tursoPipeline(statements);
-      setSyncState('on', 'tersinkron');
-    } catch (err) { console.warn(err); setSyncState('err', 'gagal'); }
-  }, 800);
+async function syncNow() {
+  if (!auth.apiKey) return toast('Login dulu untuk sinkronisasi.', 'err');
+  await pullFromWorker();
+  await pushToWorker();
+  toast('Sinkronisasi selesai', 'ok');
 }
 
 /* ---------- util ---------- */
@@ -263,9 +297,9 @@ function simpanAbsensi() {
   const editId = $('btnTambah').dataset.editId;
   if (editId) { records = records.map((r) => (r.id === editId ? { ...r, ...payload } : r)); toast('Diperbarui', 'ok'); }
   else { records = records.filter((r) => r.tanggal !== tanggal); records.push({ id: 'r' + Date.now(), ...payload }); toast('Tersimpan', 'ok'); }
-  save(K_RECORDS, records); resetForm(); renderRekap(); pushToTurso();
+  save(K_RECORDS, records); resetForm(); renderRekap(); pushToWorker();
 }
-function hapusRecord(id) { if (!confirm('Hapus absensi ini?')) return; records = records.filter((r) => r.id !== id); save(K_RECORDS, records); renderRekap(); pushToTurso(); toast('Dihapus'); }
+function hapusRecord(id) { if (!confirm('Hapus absensi ini?')) return; records = records.filter((r) => r.id !== id); save(K_RECORDS, records); renderRekap(); pushToWorker(); toast('Dihapus'); }
 function muatKeForm(id) {
   const r = records.find((x) => x.id === id); if (!r) return;
   $('tanggal').value = r.tanggal; $('jamDatang').value = r.jamDatang || ''; $('jamPulang').value = r.jamPulang || ''; $('status').value = r.status || 'hadir'; $('catatan').value = r.catatan || '';
@@ -278,12 +312,47 @@ function exportCsv() {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' })); a.download = `absensi-${$('periode').value}.csv`; a.click();
 }
 
+function updateUserBadge() {
+  const el = $('userBadge');
+  if (!el) return;
+  if (auth.username) {
+    el.textContent = `@${auth.username}`;
+    el.className = 'chip chip-on';
+    $('btnAuthModal').textContent = 'Keluar';
+  } else {
+    el.textContent = 'Lokal';
+    el.className = 'chip chip-off';
+    $('btnAuthModal').textContent = 'Masuk / Daftar';
+  }
+}
+
+function showAuthModal() {
+  $('cardAuth').hidden = false;
+  $('cardAuth').scrollIntoView({ behavior: 'smooth' });
+}
+
+function hideAuthModal() {
+  $('cardAuth').hidden = true;
+}
+
 /* ---------- init ---------- */
 
-function initApp() {
+async function initApp() {
+  // Cek query parameter ?api=
+  const urlParams = new URLSearchParams(window.location.search);
+  const apiParam = urlParams.get('api');
+  if (apiParam) {
+    setApiBase(apiParam);
+  }
+
   muatDataLokal();
   isiFormDariSettings();
   resetForm();
+
+  // Pengaturan Endpoint
+  const apiInput = $('apiBaseInput');
+  if (apiInput) apiInput.value = getApiBase();
+
   $('periode').value = new Date().toISOString().slice(0, 7);
   const t = new Date(); $('todayLabel').textContent = t.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' });
   const tick = () => { const n = new Date(); const s = String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'); $('nowMasuk').textContent=s; $('nowPulang').textContent=s; };
@@ -292,11 +361,79 @@ function initApp() {
   $('btnPulang').addEventListener('click', () => { $('jamPulang').value = $('nowPulang').textContent; toast('Jam pulang diisi'); });
   $('btnTambah').addEventListener('click', simpanAbsensi); $('btnBatal').addEventListener('click', resetForm); $('btnExport').addEventListener('click', exportCsv); $('periode').addEventListener('change', renderRekap);
   $('btnPengaturan').addEventListener('click', () => { $('cardPengaturan').hidden = !$('cardPengaturan').hidden; if(!$('cardPengaturan').hidden) $('cardPengaturan').scrollIntoView(); });
-  $('btnTutupPengaturan').addEventListener('click', () => { bacaSettingsDariForm(); renderRekap(); $('cardPengaturan').hidden = true; });
+  $('btnTutupPengaturan').addEventListener('click', () => {
+    bacaSettingsDariForm();
+    if (apiInput) setApiBase(apiInput.value.trim());
+    renderRekap();
+    $('cardPengaturan').hidden = true;
+  });
   ['nama', 'jamMasukNormal', 'jamPulangNormal', 'tarifHarian'].forEach(id => $(id).addEventListener('change', () => { bacaSettingsDariForm(); renderRekap(); }));
-  $('btnSync').addEventListener('click', async () => { await pullFromTurso(); await pushToTurso(); toast('Sync selesai', 'ok'); });
+
+  $('btnSync').addEventListener('click', syncNow);
+  $('btnAuthModal').addEventListener('click', () => {
+    if (auth.username) {
+      if (confirm('Keluar dari akun ' + auth.username + '? Data lokal akan dibersihkan.')) {
+        doLogout();
+      }
+    } else {
+      showAuthModal();
+    }
+  });
+
+  $('btnTutupAuth').addEventListener('click', hideAuthModal);
+  $('btnTutupAuth2').addEventListener('click', hideAuthModal);
+
+  // Tab Login / Register
+  let authMode = 'login';
+  const tabLogin = $('tabLogin');
+  const tabRegister = $('tabRegister');
+  const btnSubmitAuth = $('btnSubmitAuth');
+  const authTitle = $('authTitle');
+
+  tabLogin?.addEventListener('click', () => {
+    authMode = 'login';
+    tabLogin.classList.add('active');
+    tabRegister.classList.remove('active');
+    btnSubmitAuth.textContent = 'Masuk';
+    authTitle.textContent = 'Masuk Akun';
+  });
+
+  tabRegister?.addEventListener('click', () => {
+    authMode = 'register';
+    tabRegister.classList.add('active');
+    tabLogin.classList.remove('active');
+    btnSubmitAuth.textContent = 'Daftar Akun Baru';
+    authTitle.textContent = 'Daftar Akun';
+  });
+
+  btnSubmitAuth?.addEventListener('click', async () => {
+    const user = $('authUser').value.trim();
+    const pass = $('authPass').value;
+    if (!user || !pass) return toast('Username dan password wajib diisi.', 'err');
+
+    try {
+      if (authMode === 'register') {
+        await doRegister(user, pass);
+        toast('Pendaftaran berhasil!', 'ok');
+      } else {
+        await doLogin(user, pass);
+        toast('Berhasil masuk!', 'ok');
+      }
+      hideAuthModal();
+      updateUserBadge();
+      await pullFromWorker();
+    } catch (err) {
+      toast(err.message || 'Gagal autentikasi', 'err');
+    }
+  });
+
   renderRekap();
-  pullFromTurso();
+
+  const isLoggedIn = await checkAuth();
+  updateUserBadge();
+  if (isLoggedIn) {
+    pullFromWorker();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', initApp);

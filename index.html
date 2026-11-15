@@ -14,12 +14,14 @@
     <div class="brand-mark">A</div>
     <div class="brand-text">
       <h1>Absensi</h1>
-      <p>Kehadiran, lembur &amp; gaji otomatis</p>
+      <p>Kehadiran, lembur & gaji otomatis</p>
     </div>
   </div>
   <div class="appbar-actions">
     <span id="syncState" class="chip chip-off" title="Status sinkronisasi">lokal</span>
+    <span id="userBadge" class="chip chip-off" title="Status akun">Lokal</span>
     <button id="btnSync" class="btn btn-ghost" type="button">Sync</button>
+    <button id="btnAuthModal" class="btn btn-ghost" type="button">Masuk / Daftar</button>
     <button id="btnPengaturan" class="btn btn-ghost" type="button">Pengaturan</button>
   </div>
 </header>
@@ -35,6 +37,9 @@
         <button id="btnTutupPengaturan" class="btn btn-icon" type="button" aria-label="Tutup">✕</button>
       </div>
       <div class="grid">
+        <label class="field">Endpoint API (Worker URL)
+          <input id="apiBaseInput" type="url" placeholder="https://absensi-api.xxx.workers.dev" />
+        </label>
         <label class="field">Nama Karyawan
           <input id="nama" type="text" placeholder="Nama karyawan" />
         </label>
@@ -159,6 +164,30 @@
 <footer class="foot">
   <span>Absensi &middot; data lokal + sinkronisasi Turso opsional</span>
 </footer>
+
+<!-- Auth Modal (Login / Register) -->
+<section class="card" id="cardAuth" hidden style="position:fixed;top:10%;left:50%;transform:translateX(-50%);z-index:100;width:90%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.15)">
+  <div class="card-head">
+    <h2 id="authTitle">Masuk Akun</h2>
+    <button id="btnTutupAuth" class="btn btn-icon" type="button" aria-label="Tutup">✕</button>
+  </div>
+  <div class="auth-tabs" style="display:flex;border-bottom:1px solid var(--border)">
+    <button id="tabLogin" class="btn btn-ghost active" type="button" style="flex:1">Masuk</button>
+    <button id="tabRegister" class="btn btn-ghost" type="button" style="flex:1">Daftar</button>
+  </div>
+  <div class="grid" style="padding:12px">
+    <label class="field">Username
+      <input id="authUser" type="text" placeholder="username" autocomplete="username" />
+    </label>
+    <label class="field">Password
+      <input id="authPass" type="password" placeholder="password" autocomplete="current-password" />
+    </label>
+  </div>
+  <div style="padding:12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+    <button id="btnTutupAuth2" class="btn btn-ghost" type="button">Batal</button>
+    <button id="btnSubmitAuth" class="btn btn-primary" type="button">Masuk</button>
+  </div>
+</section>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
