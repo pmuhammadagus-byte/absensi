@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GajiCalc — Kalkulator Gaji Sederhana</title>
+  <title>GajiCalc — Kalkulator Jam Kerja</title>
   <style>
     :root {
       --primary: #6366f1;
@@ -12,7 +12,6 @@
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
       --border: #334155;
-      --accent: #22d3ee;
     }
     
     body {
@@ -41,7 +40,7 @@
       font-size: 2.5rem;
       font-weight: 800;
       margin: 0;
-      background: linear-gradient(to right, var(--primary), var(--accent));
+      background: linear-gradient(to right, var(--primary), #22d3ee);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       letter-spacing: -0.05em;
@@ -74,35 +73,43 @@
       overflow: hidden;
     }
 
-    .scroll-area { max-height: 300px; overflow-y: auto; }
+    .scroll-area { max-height: 350px; overflow-y: auto; }
 
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
 
     th {
       background: #1e293b;
       padding: 12px;
       text-align: left;
-      font-size: 0.875rem;
       color: var(--text-muted);
       position: sticky;
       top: 0;
+      z-index: 10;
     }
 
-    td { padding: 8px 12px; border-top: 1px solid var(--border); }
-
-    input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; accent-color: var(--primary); }
+    td { padding: 6px 12px; border-top: 1px solid var(--border); }
+    td input { width: 100%; background: transparent; border: none; color: white; padding: 4px 0; }
+    
+    tr.weekend { background: rgba(244, 63, 94, 0.05); }
 
     .summary-card {
       margin-top: 32px;
       background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
       border-radius: 24px;
       padding: 32px;
-      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
     }
 
-    .stat-label { font-size: 0.875rem; font-weight: 600; color: rgba(255,255,255,0.8); text-transform: uppercase; }
-    .stat-value { font-size: 2.5rem; font-weight: 800; color: white; display: block; margin-top: 8px; }
-    .sub-stat { font-size: 1rem; color: rgba(255,255,255,0.7); margin-top: 4px; }
+    .stat-row { display: flex; justify-content: space-between; align-items: baseline; }
+    .stat-label { font-size: 0.75rem; font-weight: 600; color: rgba(255,255,255,0.75); text-transform: uppercase; }
+    .stat-value { font-size: 1.25rem; font-weight: 700; color: white; }
+    .stat-row.total { border-top: 1px solid rgba(255,255,255,0.2); padding-top: 16px; margin-top: 8px; }
+    .stat-row.total .stat-value { font-size: 2rem; }
+
+    .scroll-area::-webkit-scrollbar { width: 6px; }
+    .scroll-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
   </style>
 </head>
 <body>
@@ -110,24 +117,26 @@
     <div class="glass-card">
       <header>
         <h1>GajiCalc</h1>
-        <p style="color: var(--text-muted)">Hitung gaji bersih bulanan instan</p>
+        <p style="color: var(--text-muted)">Hitung gaji berdasarkan total jam kerja</p>
       </header>
 
       <div class="input-group">
-        <label>Pilih Bulan</label>
+        <label>Pilih Periode</label>
         <input type="month" id="bulan" onchange="renderTable()">
       </div>
       <div class="input-group">
-        <label>Tarif Harian (Rp)</label>
-        <input type="number" id="tarif" value="200000" oninput="calculate()">
+        <label>Tarif per Jam (Rp)</label>
+        <input type="number" id="tarif" value="25000" oninput="calculate()">
       </div>
 
       <div class="table-container">
         <table>
           <thead>
             <tr>
-              <th width="30%">Tanggal</th>
-              <th>Hadir?</th>
+              <th width="15%">Tgl</th>
+              <th>Datang</th>
+              <th>Pulang</th>
+              <th width="20%" style="text-align:right">Jam</th>
             </tr>
           </thead>
         </table>
@@ -139,9 +148,14 @@
       </div>
 
       <div class="summary-card">
-        <span class="stat-label">Total Gaji Bersih</span>
-        <span class="stat-value" id="totalGaji">Rp 0</span>
-        <div class="sub-stat" id="totalHadir">0 Hari Kerja</div>
+        <div class="stat-row">
+          <span class="stat-label">Total Jam</span>
+          <span class="stat-value" id="totalJam">0j</span>
+        </div>
+        <div class="stat-row total">
+          <span class="stat-label">Gaji Bersih</span>
+          <span class="stat-value" id="totalGaji">Rp 0</span>
+        </div>
       </div>
     </div>
   </div>
@@ -159,10 +173,13 @@
         const date = new Date(year, month - 1, i);
         const isWeekend = date.getDay() === 0 || date.getDay() === 6;
         const tr = document.createElement('tr');
+        if (isWeekend) tr.className = 'weekend';
         
         tr.innerHTML = `
-          <td width="30%">${i}</td>
-          <td><input type="checkbox" class="hadir-check" ${isWeekend ? '' : 'checked'} onchange="calculate()"></td>
+          <td width="15%">${i}</td>
+          <td><input type="time" class="in-m" oninput="calculate()"></td>
+          <td><input type="time" class="in-p" oninput="calculate()"></td>
+          <td width="20%" class="out-d" style="text-align:right; color: var(--text-muted)">0</td>
         `;
         tbody.appendChild(tr);
       }
@@ -171,12 +188,34 @@
 
     function calculate() {
       const tarif = Number(document.getElementById('tarif').value) || 0;
-      const checks = document.querySelectorAll('.hadir-check:checked');
-      const totalHadir = checks.length;
-      const totalGaji = totalHadir * tarif;
+      const rows = document.querySelectorAll('#tbody tr');
+      let totalMenit = 0;
 
-      document.getElementById('totalGaji').textContent = 'Rp ' + totalGaji.toLocaleString('id-ID');
-      document.getElementById('totalHadir').textContent = totalHadir + ' Hari Kerja';
+      rows.forEach(row => {
+        const m = row.querySelector('.in-m').value;
+        const p = row.querySelector('.in-p').value;
+        const outD = row.querySelector('.out-d');
+
+        if (m && p) {
+          const [h1, mm1] = m.split(':').map(Number);
+          const [h2, mm2] = p.split(':').map(Number);
+          let d = (h2 * 60 + mm2) - (h1 * 60 + mm1);
+          if (d < 0) d += 24 * 60;
+          
+          totalMenit += d;
+          outD.textContent = (d / 60).toFixed(1) + 'j';
+          outD.style.color = 'var(--text-main)';
+        } else {
+          outD.textContent = '0';
+          outD.style.color = 'var(--text-muted)';
+        }
+      });
+
+      const jam = totalMenit / 60;
+      const totalGaji = jam * tarif;
+
+      document.getElementById('totalJam').textContent = jam.toFixed(1) + 'j';
+      document.getElementById('totalGaji').textContent = 'Rp ' + Math.round(totalGaji).toLocaleString('id-ID');
     }
 
     const now = new Date();
