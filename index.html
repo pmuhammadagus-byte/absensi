@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GajiCalc — Kalkulator Jam Kerja</title>
+  <title>GajiCalc — Kalkulator Gaji Harian</title>
   <style>
     :root {
       --primary: #6366f1;
@@ -75,22 +75,21 @@
 
     .scroll-area { max-height: 350px; overflow-y: auto; }
 
-    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-
-    th {
-      background: #1e293b;
-      padding: 12px;
-      text-align: left;
-      color: var(--text-muted);
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-
-    td { padding: 6px 12px; border-top: 1px solid var(--border); }
-    td input { width: 100%; background: transparent; border: none; color: white; padding: 4px 0; }
-    
-    tr.weekend { background: rgba(244, 63, 94, 0.05); }
+    <table>
+      <thead>
+        <tr>
+          <th width="15%">Tgl</th>
+          <th>Datang</th>
+          <th>Pulang</th>
+          <th width="20%" style="text-align:right">Jam</th>
+        </tr>
+      </thead>
+    </table>
+    <div class="scroll-area">
+      <table>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
 
     .summary-card {
       margin-top: 32px;
@@ -117,7 +116,7 @@
     <div class="glass-card">
       <header>
         <h1>GajiCalc</h1>
-        <p style="color: var(--text-muted)">Hitung gaji berdasarkan total jam kerja</p>
+        <p style="color: var(--text-muted)">Gaji bersih (Total Jam / 9) × Tarif Harian</p>
       </header>
 
       <div class="input-group">
@@ -125,8 +124,8 @@
         <input type="month" id="bulan" onchange="renderTable()">
       </div>
       <div class="input-group">
-        <label>Tarif per Jam (Rp)</label>
-        <input type="number" id="tarif" value="25000" oninput="calculate()">
+        <label>Tarif Harian (Rp / 9 Jam)</label>
+        <input type="number" id="tarif" value="200000" oninput="calculate()">
       </div>
 
       <div class="table-container">
@@ -149,11 +148,11 @@
 
       <div class="summary-card">
         <div class="stat-row">
-          <span class="stat-label">Total Jam</span>
+          <span class="stat-label">Total Jam Kerja</span>
           <span class="stat-value" id="totalJam">0j</span>
         </div>
         <div class="stat-row total">
-          <span class="stat-label">Gaji Bersih</span>
+          <span class="stat-label">Total Gaji Bersih</span>
           <span class="stat-value" id="totalGaji">Rp 0</span>
         </div>
       </div>
@@ -187,7 +186,7 @@
     }
 
     function calculate() {
-      const tarif = Number(document.getElementById('tarif').value) || 0;
+      const tarifHarian = Number(document.getElementById('tarif').value) || 0;
       const rows = document.querySelectorAll('#tbody tr');
       let totalMenit = 0;
 
@@ -211,10 +210,11 @@
         }
       });
 
-      const jam = totalMenit / 60;
-      const totalGaji = jam * tarif;
+      const totalJam = totalMenit / 60;
+      // Rumus: (Total Jam / 9) * Tarif Harian
+      const totalGaji = (totalJam / 9) * tarifHarian;
 
-      document.getElementById('totalJam').textContent = jam.toFixed(1) + 'j';
+      document.getElementById('totalJam').textContent = totalJam.toFixed(1) + 'j';
       document.getElementById('totalGaji').textContent = 'Rp ' + Math.round(totalGaji).toLocaleString('id-ID');
     }
 
