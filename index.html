@@ -3,65 +3,150 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kalkulator Gaji & Lembur</title>
+  <title>Kalkulator Gaji Bulanan</title>
   <style>
     :root { --bg: #f8fafc; --card: #ffffff; --primary: #2563eb; --text: #1e293b; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; padding: 20px; margin: 0; }
-    .card { background: var(--card); padding: 24px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); width: 100%; max-width: 400px; border: 1px solid #f1f5f9; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); padding: 20px; margin: 0; display: flex; flex-direction: column; align-items: center; }
+    .card { background: var(--card); padding: 24px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); width: 100%; max-width: 500px; border: 1px solid #f1f5f9; }
     h1 { font-size: 1.5rem; margin: 0 0 24px; text-align: center; color: #0f172a; }
     .field { margin-bottom: 20px; }
     label { display: block; font-size: 0.875rem; font-weight: 600; margin-bottom: 8px; color: #475569; }
     input { width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; box-sizing: border-box; font-size: 1rem; transition: border-color 0.2s; }
     input:focus { border-color: var(--primary); outline: none; }
-    .res { margin-top: 28px; padding-top: 24px; border-top: 2px dashed #e2e8f0; }
-    .row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 1rem; color: #334155; }
-    .total { font-weight: 800; font-size: 1.25rem; color: #1e293b; margin-top: 20px; padding: 12px; background: #eff6ff; border-radius: 8px; }
+    .table-wrap { width: 100%; overflow-x: auto; margin-top: 24px; max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th { position: sticky; top: 0; background: #f1f5f9; padding: 8px; border: 1px solid #e2e8f0; z-index: 1; }
+    td { padding: 4px 8px; border: 1px solid #e2e8f0; }
+    td input { padding: 4px; font-size: 0.85rem; border: 1px solid #cbd5e1; }
+    .res-box { margin-top: 28px; padding: 20px; background: #eff6ff; border-radius: 12px; border: 1px solid #dbeafe; width: 100%; box-sizing: border-box; }
+    .row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 1rem; }
+    .total { font-weight: 800; font-size: 1.25rem; color: #1e293b; margin-top: 12px; border-top: 2px solid #dbeafe; padding-top: 12px; }
+    .weekend { background: #fff1f2; }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>Kalkulator Gaji</h1>
+    <h1>Kalkulator Gaji Bulanan</h1>
+    <div class="field">
+      <label>Pilih Bulan</label>
+      <input type="month" id="bulan" onchange="renderTable()">
+    </div>
     <div class="field">
       <label>Tarif Harian (Rp)</label>
-      <input type="number" id="tarif" value="200000" oninput="calc()">
+      <input type="number" id="tarif" value="200000" oninput="calculate()">
     </div>
-    <div class="field">
-      <label>Jam Datang</label>
-      <input type="time" id="masuk" value="08:00" oninput="calc()">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+      <div class="field">
+        <label>Default Datang</label>
+        <input type="time" id="defMasuk" value="08:00" oninput="applyDefault()">
+      </div>
+      <div class="field">
+        <label>Default Pulang</label>
+        <input type="time" id="defPulang" value="18:00" oninput="applyDefault()">
+      </div>
     </div>
-    <div class="field">
-      <label>Jam Pulang</label>
-      <input type="time" id="pulang" value="18:00" oninput="calc()">
-    </div>
-    <div class="res" id="out"></div>
-  </div>
-  <script>
-    function calc() {
-      const tarif = Number(document.getElementById("tarif").value) || 0;
-      const mVal = document.getElementById("masuk").value;
-      const pVal = document.getElementById("pulang").value;
-      if (!mVal || !pVal) return;
-      const [h1, m1] = mVal.split(":").map(Number);
-      const [h2, m2] = pVal.split(":").map(Number);
-      
-      let durasi = (h2 * 60 + m2) - (h1 * 60 + m1);
-      if (durasi < 0) durasi += 24 * 60;
-      
-      const jamKerja = durasi / 60;
-      const lembur = Math.max(0, jamKerja - 9);
-      const upahLembur = lembur * (tarif / 9);
-      const total = tarif + upahLembur;
 
-      const fmt = (n) => "Rp " + Math.round(n).toLocaleString("id-ID");
-      document.getElementById('out').innerHTML = `
-        <div class="row"><span>Total Jam Kerja</span><span>${jamKerja.toFixed(2)} jam</span></div>
-        <div class="row"><span>Lembur (di atas 9j)</span><span>${lembur.toFixed(2)} jam</span></div>
-        <div class="row"><span>Gaji Pokok</span><span>${fmt(tarif)}</span></div>
+    <div class="table-wrap">
+      <table id="tabelGaji">
+        <thead>
+          <tr>
+            <th>Tgl</th>
+            <th>Masuk</th>
+            <th>Pulang</th>
+            <th>Lembur</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="res-box" id="summary"></div>
+  </div>
+
+  <script>
+    function renderTable() {
+      const val = document.getElementById('bulan').value;
+      if (!val) return;
+      const [year, month] = val.split('-').map(Number);
+      const days = new Date(year, month, 0).getDate();
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+
+      const defM = document.getElementById('defMasuk').value;
+      const defP = document.getElementById('defPulang').value;
+
+      for (let i = 1; i <= days; i++) {
+        const date = new Date(year, month - 1, i);
+        const dayNum = date.getDay();
+        const isWeekend = dayNum === 0 || dayNum === 6;
+        const tr = document.createElement('tr');
+        if (isWeekend) tr.className = 'weekend';
+        
+        tr.innerHTML = `
+          <td>${i}</td>
+          <td><input type="time" class="in-m" value="${isWeekend ? '' : defM}" oninput="calculate()"></td>
+          <td><input type="time" class="in-p" value="${isWeekend ? '' : defP}" oninput="calculate()"></td>
+          <td class="out-l">0</td>
+        `;
+        tbody.appendChild(tr);
+      }
+      calculate();
+    }
+
+    function applyDefault() {
+      const defM = document.getElementById('defMasuk').value;
+      const defP = document.getElementById('defPulang').value;
+      document.querySelectorAll('#tbody tr:not(.weekend)').forEach(row => {
+        row.querySelector('.in-m').value = defM;
+        row.querySelector('.in-p').value = defP;
+      });
+      calculate();
+    }
+
+    function calculate() {
+      const tarif = Number(document.getElementById('tarif').value) || 0;
+      const rows = document.querySelectorAll('#tbody tr');
+      let totalHadir = 0;
+      let totalLembur = 0;
+
+      rows.forEach(row => {
+        const m = row.querySelector('.in-m').value;
+        const p = row.querySelector('.in-p').value;
+        const outL = row.querySelector('.out-l');
+
+        if (m && p) {
+          const [h1, mm1] = m.split(':').map(Number);
+          const [h2, mm2] = p.split(':').map(Number);
+          let durasi = (h2 * 60 + mm2) - (h1 * 60 + mm1);
+          if (durasi < 0) durasi += 24 * 60;
+          
+          const jamKerja = durasi / 60;
+          const lembur = Math.max(0, jamKerja - 9);
+          outL.textContent = lembur.toFixed(1);
+          totalLembur += lembur;
+          totalHadir++;
+        } else {
+          outL.textContent = '0';
+        }
+      });
+
+      const upahLembur = totalLembur * (tarif / 9);
+      const gajiPokok = totalHadir * tarif;
+      const totalGaji = gajiPokok + upahLembur;
+
+      const fmt = (n) => 'Rp ' + Math.round(n).toLocaleString('id-ID');
+      document.getElementById('summary').innerHTML = `
+        <div class="row"><span>Hari Hadir</span><span>${totalHadir} hari</span></div>
+        <div class="row"><span>Total Lembur</span><span>${totalLembur.toFixed(1)} jam</span></div>
+        <div class="row"><span>Gaji Pokok</span><span>${fmt(gajiPokok)}</span></div>
         <div class="row"><span>Upah Lembur</span><span>${fmt(upahLembur)}</span></div>
-        <div class="row total"><span>Total Gaji Hari Ini</span><span>${fmt(total)}</span></div>
+        <div class="row total"><span>Gaji Bersih</span><span>${fmt(totalGaji)}</span></div>
       `;
     }
-    calc();
+
+    const now = new Date();
+    document.getElementById('bulan').value = now.toISOString().slice(0, 7);
+    renderTable();
   </script>
 </body>
 </html>
