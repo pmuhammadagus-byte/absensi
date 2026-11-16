@@ -75,21 +75,22 @@
 
     .scroll-area { max-height: 350px; overflow-y: auto; }
 
-    <table>
-      <thead>
-        <tr>
-          <th width="15%">Tgl</th>
-          <th>Datang</th>
-          <th>Pulang</th>
-          <th width="20%" style="text-align:right">Jam</th>
-        </tr>
-      </thead>
-    </table>
-    <div class="scroll-area">
-      <table>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+
+    th {
+      background: #1e293b;
+      padding: 12px;
+      text-align: left;
+      color: var(--text-muted);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    td { padding: 6px 12px; border-top: 1px solid var(--border); }
+    td input { width: 100%; background: transparent; border: none; color: white; padding: 4px 0; }
+    
+    tr.weekend { background: rgba(244, 63, 94, 0.05); }
 
     .summary-card {
       margin-top: 32px;
@@ -211,7 +212,6 @@
       });
 
       const totalJam = totalMenit / 60;
-      // Rumus: (Total Jam / 9) * Tarif Harian
       const totalGaji = (totalJam / 9) * tarifHarian;
 
       document.getElementById('totalJam').textContent = totalJam.toFixed(1) + 'j';
